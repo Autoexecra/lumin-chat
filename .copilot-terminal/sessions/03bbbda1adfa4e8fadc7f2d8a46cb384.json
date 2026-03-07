@@ -1,0 +1,41 @@
+{
+  "session_id": "03bbbda1adfa4e8fadc7f2d8a46cb384",
+  "created_at": "2026-03-07T09:39:21.271016Z",
+  "model_level": 3,
+  "approval_policy": "read-only",
+  "cwd": "D:\\code\\github-copilot-moniter",
+  "messages": [
+    {
+      "role": "system",
+      "content": "你是一个运行在 Linux 终端中的高级编码代理，目标是尽可能复现 GitHub Copilot Terminal 的工作方式。\n\n你的工作要求:\n- 优先通过工具完成任务，而不是只给建议。\n- 在没有完成用户目标之前持续推进，必要时进行多轮工具调用。\n- 回答语言跟随用户。\n- 处理代码、命令、文件修改、排错、部署和运维任务。\n- 在执行 shell 命令前先想清楚最小必要步骤，避免无意义的大范围扫描。\n- 如果需要修改文件，优先用 read_file、search_text、write_file 等工具精确操作。\n- 当命令执行失败时，先根据错误做下一步诊断，而不是立即放弃。\n- 默认面向 bash/Linux 环境生成命令，除非环境信息显示不是 Linux。\n- 给用户的最终文本应简洁、可执行、少废话。\n\n你可以使用的工具包括:\n- run_shell_command: 执行终端命令\n- change_directory: 切换工作目录\n- list_directory: 查看目录结构\n- search_text: 搜索文本\n- read_file: 读取文件片段\n- write_file: 写入文件\n- get_environment: 获取当前运行环境\n\n约束:\n- 不要虚构命令执行结果。\n- 不要声称完成了未实际执行的操作。\n- 如果工具返回的信息不足，继续调用工具获取信息。"
+    },
+    {
+      "role": "user",
+      "content": "调用 get_environment 工具并用一句中文总结当前环境。"
+    },
+    {
+      "role": "assistant",
+      "content": "\n\n",
+      "tool_calls": [
+        {
+          "id": "019cc7aa7b40d72616e5800263c4353b",
+          "type": "function",
+          "function": {
+            "name": "get_environment",
+            "arguments": "{}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "019cc7aa7b40d72616e5800263c4353b",
+      "name": "get_environment",
+      "content": "{\n  \"cwd\": \"D:\\\\code\\\\github-copilot-moniter\",\n  \"os\": \"Windows\",\n  \"release\": \"10\",\n  \"python_version\": \"3.13.5 (tags/v3.13.5:6cb20a2, Jun 11 2025, 16:15:46) [MSC v.1943 64 bit (AMD64)]\",\n  \"user\": \"Administrator\",\n  \"hostname\": \"0EXXOJ8HZ6WL7MH\",\n  \"shell\": \"C:\\\\WINDOWS\\\\system32\\\\cmd.exe\"\n}"
+    },
+    {
+      "role": "assistant",
+      "content": "当前环境是 Windows 10 系统，运行在 Python 3.13.5 环境中，工作目录为 D:\\code\\github-copilot-moniter。"
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# Virtual environments
+.env
+.env.*
+.venv/
+venv/
+env/
+
+# Editor / IDE
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs and databases
+*.log
+*.sqlite3
+
+# Python bytecode
+.pyc
+.pyo
+.pyd
+
+# Lumin-chat sessions
+.lumin-chat/
+
+# Secrets and config
+config.json
+*.key
+*.pem
+*.env
+
+# Node
+node_modules/

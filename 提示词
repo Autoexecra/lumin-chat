@@ -1,0 +1,94 @@
+不需要每个指令都问：
+允许执行? [y/n] (n)
+要有一个黑名单，禁止执行的指令列表，列表中的指令不允许执行。
+其他的指令都可以执行。
+有黑名单模式和白名单模式。默认使用黑名单模式。黑名单模式，要将黑名单告诉llm，白名单模式，要将白名单告诉llm。避免生成一些危险的指令。
+llm是分level的，level越大，能力越强，默认使用level 1。当执行老是出问题时候。或者模型连接不上，有可能api-key过期，有可能服务器挂了。
+比如连续执行同一指令多次，
+或者生成的指令连续出现4次错误，说明当前模型不胜任这个任务了，可以自动升级到下一个level，
+直到达到最高level 5。不同模型有可能模型是一样的，但是参数不一样。
+
+
+我还可以在配置文件中提供一个文档库，
+ip:117.72.194.76 
+端口：22
+账号：root
+密码：!!!zzxxccvvbbnnmmMMNN12345678
+目录：/root/share/Document-library
+
+在这个文件夹一下有很多文档，
+root@lavm-6rzxsqclub:~/share/Document-library# find -name  "*.md" && find -name  "*.txt"
+./dify本地部署.md
+./device-mapper4.md
+./license 流程图.md
+./DCB讲解.md
+./linux_license_scheme.md
+./安全启动-可信启动2.md
+./安全启动-可信启动.md
+./启动流程 copy.md
+./device-mapper2.md
+./123/uefi-secure-boot.md
+./123/uefi-secure-boot-summary.md
+./123/uefi-bios-security-vendors.md
+./123/uefi-secure-boot-chain-detailed.md
+./123/uefi-bios-vendor-security (1).md
+./123/uefi-secure-boot-chain-comprehensive_Version1.md
+./123/uefi-secure-boot-chain-comprehensive_Version2.md
+./123/uefi-secure-boot-in-depth.md
+./123/uefi-bios-vendor-security.md
+./123/uefi-bios-vendor-security (2).md
+./123/uefi-secure-boot-chain-details.md
+./加密基础功能实现详细步骤.md
+./system_architecture.md
+./TSN中的ETF机制详解.md
+
+你可以先查看所有md和txt文档的列表，从名称分析这个文档是否和你需要的文档相关，然后使用指令来查看文档内容。在文档中找到有用的信息。
+因为我会把测试板卡相关的信息放在这个文档库中，所以你可以先查看一下这个文档库，看看有没有相关的文档可以参考。
+
+执行完后，将代码放到测试板子上进行测试，生成一个deploy.py文件，可以一键将代码放到测试板子上。默认开发板是 root@117.72.194.76 端口是3568 。没有密码。
+
+
+
+you> 你得非交互式的帮我测试docker Ubuntu，并且帮我生成详细的测试报告，测试报告包括输入了什么指令，输出结果是什么，最后总结。 尽力详细，并且保证成功
+
+thinking>
+好的，用户之前已经让我检查Docker是否安装，并运行了hello-world容器来测试。现在用户要求非交互式地测试Docker Ubuntu，并生成详细的测试报告，包括执行的指令、输出结果，最后总结要详细，且保证成功。
+
+首先，我需要确认用户的需求。他们可能希望验证Docker在Ubuntu容器中的基本功能，比如运行容器、执行命令、检查日志等，但不需要手动交互。之前的测试已经确认Docker安装成功，现在需要更深入的测试。
+
+接下来，我应该考虑哪些非交互式命令可以用来测试Ubuntu容器。例如，运行一个简单的容器，执行一些基本命令如apt update，检查容器是否正常退出，或者测试网络连接。同时，需要确保这些命令不会涉及任何交互式操作，比如不需要用户输入。
+
+然后，生成测试报告的结构。用户希望报告包含每一步的指令、输出结果，以及总结。可能需要将每个测试步骤写入报告文件，比如使用tee命令将输出追加到/root/docker_test_report.txt中。同时，要确保报告详细，覆盖各种测试用例，如容器运行、命令执行、日志检查等。
+
+还要注意用户提到的“保证成功”，所以需要选择那些通常预期成功的命令，避免可能失败的操作。例如，运行hello-world已经成功，但可能需要更多的测试点。比如，测试容器内执行echo命令，或者检查容器的退出状态。
+
+另外，用户之前已经运行过docker run --rm hello-world，并生成了报告。现在可能需要扩展测试内容，比如测试其他命令，或者验证容器的网络功能。例如，运行一个Ubuntu容器并执行ping命令测试网络连通性，或者检查容器内的文件系统。
+
+需要确保所有命令都是非交互式的，使用--rm参数让容器运行后自动删除，避免手动清理。同时，使用tee命令将输出保存到文件，这样报告会自动记录结果。例如，运行容器并执行apt update，然后将输出记录下来。
+
+最后，总结部分需要详细说明每个测试步骤的结果，确认Docker功能正常，容器能够执行预期的操作，没有错误发生。可能需要检查报告文件的内容，确保所有测试步骤都成功，并且没有遗漏任何关键点。
+
+assistant>
+
+
+╭──────────────────────────────────────────── tool> run_shell_command ─────────────────────────────────────────────╮
+│ {                                                                                                                │
+│   "raw": " {\"command\": \"docker run --rm ubuntu echo \"Docker Ubuntu test successful\" 2>&1 | tee -a           │
+│ /root/docker_test_report.txt\", \"timeout_seconds\": 30}"                                                        │
+│ }                                                                                                                │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+Traceback (most recent call last):
+  File "/root/github-copilot-moniter/main.py", line 5, in <module>
+    raise SystemExit(main())
+  File "/root/github-copilot-moniter/src/app.py", line 97, in main
+    agent.run(user_input)
+  File "/root/github-copilot-moniter/src/agent.py", line 165, in run
+    result = self.executor.execute(tool_call)
+  File "/root/github-copilot-moniter/src/toolkit.py", line 364, in execute
+    return self.run_shell_command(**arguments)
+TypeError: ToolExecutor.run_shell_command() got an unexpected keyword argument 'raw'
+ok3568 ~/github-copilot-moniter #
+上面是执行错误。
+
+另外，现在帮我整个项目名称改名为lumin-chat。所有的代码和相关文档都要改。并且要帮我放到测试板子上测试。默认开发板是 root@117.72.194.76 端口是3568 。没有密码。
+所有代码都要加注释，文档都要是中文的。
