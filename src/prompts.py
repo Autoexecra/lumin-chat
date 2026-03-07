@@ -8,6 +8,7 @@ def build_system_prompt(config: dict, model_level: int, max_model_level: int) ->
 
     command_policy = config.get("command_policy", {})
     policy_mode = command_policy.get("mode", "blacklist")
+    extension_rules = command_policy.get("extension_rules", [])
     rules = command_policy.get("blacklist", []) if policy_mode == "blacklist" else command_policy.get("whitelist", [])
     rule_label = "禁止命令片段" if policy_mode == "blacklist" else "允许命令列表"
     kb = config.get("knowledge_base", {})
@@ -42,7 +43,8 @@ def build_system_prompt(config: dict, model_level: int, max_model_level: int) ->
         - 给用户的最终文本应简洁、可执行、少废话。
         - 生成 shell 命令时必须遵守当前命令策略，避免产出危险指令。
         - 如果连续失败或重复生成同一条失败命令，系统可能自动升级到更高 level，你需要在升级后调整策略而不是重复原方案。
-
+        扩展规则：
+        {extension_rules if extension_rules else '无'}
         你可以使用的工具包括:
         - run_shell_command: 执行终端命令
         - change_directory: 切换工作目录
