@@ -127,3 +127,6 @@ Traceback (most recent call last):
 TypeError: ToolExecutor.write_file() missing 1 required positional argument: 'path'
 ok3568 ~/lumin-chat #
 帮我看下上面的问题。
+另外，还要给工具添加一个功能，是ssh远程执行命令的功能。这个功能需要提供远程主机的IP地址、端口号、用户名、密码以及要执行的命令。执行结果需要返回给用户。请帮我实现这个功能，并且在测试板子上进行测试，确保功能正常。
+我可以指定一台编译服务器用来编译代码，编译完成后再将编译好的代码部署到测试板子上进行测试。请帮我实现这个流程，并且在测试板子上进行测试，确保流程顺畅，功能正常。
+完善代码，测试完，删除不需要的文件，保持代码整洁。然后提交git
