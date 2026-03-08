@@ -36,7 +36,9 @@ Thumbs.db
 
 # Lumin-chat sessions
 .lumin-chat/
-
+.dist
+.venv
+.vscode
 # Secrets and config
 *.key
 *.pem
