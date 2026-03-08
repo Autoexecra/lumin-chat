@@ -90,6 +90,14 @@
     "user": "root",
     "remote_dir": "/root/lumin-chat"
   },
+  "build_server": {
+    "enabled": false,
+    "host": "",
+    "port": 22,
+    "user": "root",
+    "password": "",
+    "remote_dir": "/root/lumin-chat-build"
+  },
   "ai": {
     "level1": {
       "name": "qwen3-235b-a22b-thinking-2507",

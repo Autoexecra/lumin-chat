@@ -89,6 +89,14 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "user": "root",
         "remote_dir": "/root/lumin-chat",
     },
+    "build_server": {
+        "enabled": False,
+        "host": "",
+        "port": 22,
+        "user": "root",
+        "password": "",
+        "remote_dir": "/root/lumin-chat-build",
+    },
     "log": {
         "debug_mode": {
             "enabled": False,

@@ -59,6 +59,7 @@ def build_system_prompt(config: dict, model_level: int, max_model_level: int) ->
         - read_file: 读取文件片段
         - write_file: 写入文件
         - get_environment: 获取当前运行环境
+        - ssh_execute_command: 通过 SSH 在远端主机执行命令
         - list_knowledge_documents: 查看远程文档库中的文档名称
         - read_knowledge_document: 读取远程文档库文档内容
 

@@ -16,11 +16,13 @@ import subprocess
 import sys
 import time
 import uuid
+from codecs import decode as codecs_decode
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
 from src.document_library import KnowledgeBaseClient
 from src.models import ToolCall, ToolExecutionResult
+from src.ssh_client import SSHConnectionConfig, SSHRemoteClient
 
 if os.name != "nt":
     import pty
@@ -221,6 +223,28 @@ class PersistentShellSession:
 class ToolExecutor:
     """统一管理 lumin-chat 的工具定义和执行流程。"""
 
+    TOOL_ALLOWED_KEYS = {
+        "run_shell_command": {"command", "timeout_seconds", "cwd"},
+        "change_directory": {"path"},
+        "list_directory": {"path", "recursive", "max_entries"},
+        "search_text": {"pattern", "path", "glob", "case_sensitive", "max_matches"},
+        "read_file": {"path", "start_line", "end_line"},
+        "write_file": {"path", "content", "append"},
+        "get_environment": set(),
+        "ssh_execute_command": {"host", "port", "username", "password", "command", "timeout_seconds", "cwd"},
+        "list_knowledge_documents": {"keyword", "limit"},
+        "read_knowledge_document": {"path", "start_line", "end_line"},
+    }
+
+    TOOL_PRIMARY_FIELDS = {
+        "run_shell_command": "command",
+        "change_directory": "path",
+        "read_file": "path",
+        "write_file": "content",
+        "read_knowledge_document": "path",
+        "ssh_execute_command": "command",
+    }
+
     def __init__(
         self,
         cwd: str,
@@ -349,6 +373,26 @@ class ToolExecutor:
                     },
                 },
             },
+            {
+                "type": "function",
+                "function": {
+                    "name": "ssh_execute_command",
+                    "description": "Run a shell command on a remote host over SSH and return exit code, stdout and stderr.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "host": {"type": "string", "description": "Remote host IP or domain."},
+                            "port": {"type": "integer", "description": "SSH port.", "default": 22},
+                            "username": {"type": "string", "description": "SSH username."},
+                            "password": {"type": "string", "description": "SSH password. Leave empty for key-based login."},
+                            "command": {"type": "string", "description": "Shell command to execute remotely."},
+                            "timeout_seconds": {"type": "integer", "description": "Timeout in seconds.", "default": 60},
+                            "cwd": {"type": "string", "description": "Optional remote working directory."}
+                        },
+                        "required": ["host", "username", "command"],
+                    },
+                },
+            },
         ]
         if self.knowledge_base.enabled:
             tools.extend(
@@ -406,6 +450,8 @@ class ToolExecutor:
             return self.write_file(**arguments)
         if name == "get_environment":
             return self.get_environment()
+        if name == "ssh_execute_command":
+            return self.ssh_execute_command(**arguments)
         if name == "list_knowledge_documents":
             return self.list_knowledge_documents(**arguments)
         if name == "read_knowledge_document":
@@ -669,6 +715,72 @@ class ToolExecutor:
         }
         return ToolExecutionResult(name="get_environment", ok=True, output=json.dumps(payload, ensure_ascii=False, indent=2))
 
+    def ssh_execute_command(
+        self,
+        host: str,
+        username: str,
+        command: str,
+        port: int = 22,
+        password: str = "",
+        timeout_seconds: int = 60,
+        cwd: Optional[str] = None,
+    ) -> ToolExecutionResult:
+        """通过 SSH 在远端执行命令。"""
+
+        allowed, policy_reason = self._check_command_policy(command)
+        if not allowed:
+            return ToolExecutionResult(name="ssh_execute_command", ok=False, output=policy_reason, metadata={"blocked": True})
+
+        display_target = f"{username}@{host}:{port} -> {command}"
+        allowed, reason = self._check_approval("ssh_execute_command", display_target)
+        if not allowed:
+            return ToolExecutionResult(name="ssh_execute_command", ok=False, output=reason)
+
+        try:
+            connection = SSHConnectionConfig(
+                host=host,
+                port=int(port),
+                username=username,
+                password=password,
+                timeout_seconds=min(max(int(timeout_seconds), 1), 600),
+            )
+            with SSHRemoteClient(connection) as client:
+                payload = client.run(command=command, timeout_seconds=timeout_seconds, cwd=cwd)
+            payload["stdout"] = self._truncate(str(payload.get("stdout", "")))
+            payload["stderr"] = self._truncate(str(payload.get("stderr", "")))
+            exit_code = int(payload.get("exit_code", 1))
+            return ToolExecutionResult(
+                name="ssh_execute_command",
+                ok=exit_code == 0,
+                output=json.dumps(payload, ensure_ascii=False, indent=2),
+                metadata={"exit_code": exit_code, "host": host, "port": port, "username": username},
+            )
+        except Exception as exc:
+            if not password:
+                fallback = self._run_ssh_command_via_cli(
+                    host=host,
+                    port=int(port),
+                    username=username,
+                    command=command,
+                    timeout_seconds=timeout_seconds,
+                    cwd=cwd,
+                )
+                if fallback is not None:
+                    exit_code = int(fallback.get("exit_code", 1))
+                    return ToolExecutionResult(
+                        name="ssh_execute_command",
+                        ok=exit_code == 0,
+                        output=json.dumps(fallback, ensure_ascii=False, indent=2),
+                        metadata={
+                            "exit_code": exit_code,
+                            "host": host,
+                            "port": port,
+                            "username": username,
+                            "transport": "ssh-cli",
+                        },
+                    )
+            return ToolExecutionResult(name="ssh_execute_command", ok=False, output=f"SSH 命令执行失败: {exc}")
+
     def _resolve_path(self, raw_path: str) -> str:
         """将相对路径解析为基于当前 cwd 的绝对路径。"""
 
@@ -697,18 +809,7 @@ class ToolExecutor:
             for key, value in fallback.items():
                 normalized.setdefault(key, value)
 
-        allowed_keys = {
-            "run_shell_command": {"command", "timeout_seconds", "cwd"},
-            "change_directory": {"path"},
-            "list_directory": {"path", "recursive", "max_entries"},
-            "search_text": {"pattern", "path", "glob", "case_sensitive", "max_matches"},
-            "read_file": {"path", "start_line", "end_line"},
-            "write_file": {"path", "content", "append"},
-            "get_environment": set(),
-            "list_knowledge_documents": {"keyword", "limit"},
-            "read_knowledge_document": {"path", "start_line", "end_line"},
-        }
-        valid_keys = allowed_keys.get(tool_name)
+        valid_keys = self.TOOL_ALLOWED_KEYS.get(tool_name)
         if valid_keys is None:
             return normalized
         return {key: value for key, value in normalized.items() if key in valid_keys}
@@ -733,16 +834,92 @@ class ToolExecutor:
             if isinstance(decoded, dict):
                 return self._normalize_tool_arguments(tool_name, decoded)
 
-        primary_field = {
-            "run_shell_command": "command",
-            "change_directory": "path",
-            "read_file": "path",
-            "write_file": "content",
-            "read_knowledge_document": "path",
-        }.get(tool_name)
+        recovered = self._recover_loose_object(tool_name, text)
+        if recovered:
+            return recovered
+
+        primary_field = self.TOOL_PRIMARY_FIELDS.get(tool_name)
         if primary_field is None:
             return {}
         return {primary_field: text}
+
+    def _recover_loose_object(self, tool_name: str, text: str) -> Dict[str, object]:
+        """从不完整或转义错误的 JSON 风格文本中尽量恢复字段。"""
+
+        valid_keys = sorted(self.TOOL_ALLOWED_KEYS.get(tool_name, set()), key=len, reverse=True)
+        if not valid_keys:
+            return {}
+
+        pattern = re.compile(r'"(?P<key>' + "|".join(re.escape(item) for item in valid_keys) + r')"\s*:\s*', re.DOTALL)
+        matches = list(pattern.finditer(text))
+        if not matches:
+            return {}
+
+        recovered: Dict[str, object] = {}
+        for index, match in enumerate(matches):
+            key = match.group("key")
+            value_start = match.end()
+            value_end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+            raw_segment = text[value_start:value_end].lstrip()
+            parsed = self._parse_loose_value(raw_segment)
+            if parsed is not None:
+                recovered[key] = parsed
+        return recovered
+
+    def _parse_loose_value(self, raw_segment: str) -> object:
+        """解析字段值，兼容缺失引号与中途截断。"""
+
+        if not raw_segment:
+            return None
+
+        if raw_segment.startswith('"'):
+            return self._parse_loose_string(raw_segment[1:])
+
+        lowered = raw_segment.lower()
+        if lowered.startswith("true"):
+            return True
+        if lowered.startswith("false"):
+            return False
+        if lowered.startswith("null"):
+            return None
+
+        number_match = re.match(r"-?\d+", raw_segment)
+        if number_match:
+            return int(number_match.group(0))
+
+        token = raw_segment.strip().rstrip(",").rstrip("}").strip()
+        return token or None
+
+    def _parse_loose_string(self, text: str) -> str:
+        """解析宽松的双引号字符串，容忍内部裸引号与缺失收尾引号。"""
+
+        buffer: List[str] = []
+        index = 0
+        while index < len(text):
+            char = text[index]
+            if char == "\\":
+                if index + 1 < len(text):
+                    buffer.append(char)
+                    buffer.append(text[index + 1])
+                    index += 2
+                    continue
+                buffer.append(char)
+                break
+            if char == '"':
+                tail = text[index + 1 :]
+                if re.match(r"\s*(,|}|$)", tail):
+                    break
+                buffer.append(char)
+                index += 1
+                continue
+            buffer.append(char)
+            index += 1
+
+        raw_value = "".join(buffer)
+        try:
+            return codecs_decode(raw_value, "unicode_escape")
+        except Exception:
+            return raw_value
 
     def _check_command_policy(self, command: str) -> tuple[bool, str]:
         """按黑名单或白名单策略校验命令。"""
@@ -802,3 +979,45 @@ class ToolExecutor:
         if len(text) <= limit:
             return text
         return text[:limit] + "\n...<truncated>..."
+
+    def _run_ssh_command_via_cli(
+        self,
+        host: str,
+        port: int,
+        username: str,
+        command: str,
+        timeout_seconds: int,
+        cwd: Optional[str],
+    ) -> Optional[Dict[str, object]]:
+        """在密钥登录场景下回退到系统 ssh 命令。"""
+
+        remote_command = command if not cwd else f"cd {shlex.quote(cwd)} && {command}"
+        try:
+            completed = subprocess.run(
+                [
+                    "ssh",
+                    "-o",
+                    "StrictHostKeyChecking=no",
+                    "-p",
+                    str(port),
+                    f"{username}@{host}",
+                    remote_command,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=timeout_seconds,
+            )
+        except Exception:
+            return None
+
+        return {
+            "command": command,
+            "cwd": cwd or "",
+            "exit_code": completed.returncode,
+            "stdout": self._truncate(completed.stdout),
+            "stderr": self._truncate(completed.stderr),
+            "host": host,
+            "port": port,
+            "username": username,
+            "transport": "ssh-cli",
+        }

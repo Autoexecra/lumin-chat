@@ -2,6 +2,7 @@
 
 import json
 import os
+import tempfile
 import sys
 from pathlib import Path
 
@@ -11,6 +12,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.config_loader import load_config
 from src.document_library import KnowledgeBaseClient
+from src.models import ToolCall
 from src.toolkit import ToolExecutor
 
 
@@ -41,6 +43,21 @@ def main() -> int:
     env_payload = json.loads(env_result.output)
     require(env_payload["cwd"] == str(Path(os.getcwd()).resolve()), "environment cwd mismatch")
 
+    with tempfile.TemporaryDirectory(prefix="lumin-chat-smoke-"):
+        raw_write = executor.execute(
+            ToolCall(
+                id="raw-write",
+                name="write_file",
+                arguments={
+                    "raw": '{"path": "raw-parser.txt", "content": "line1\\nline2"',
+                },
+            )
+        )
+        require(raw_write.ok, f"raw write parse failed: {raw_write.output}")
+        written = Path(executor.cwd) / "raw-parser.txt"
+        require(written.exists(), "raw parser did not create file")
+        written.unlink(missing_ok=True)
+
     pwd_result = executor.run_shell_command("pwd" if os.name != "nt" else "Get-Location | Select-Object -ExpandProperty Path")
     require(pwd_result.ok, f"pwd failed: {pwd_result.output}")
 
@@ -69,6 +86,21 @@ def main() -> int:
     if kb_client.enabled:
         kb_docs = kb_client.list_documents(keyword="安全", limit=5)
         require(isinstance(kb_docs, list) and len(kb_docs) >= 1, "knowledge base listing failed")
+
+    ssh_host = os.getenv("LUMIN_CHAT_TEST_SSH_HOST", "")
+    ssh_user = os.getenv("LUMIN_CHAT_TEST_SSH_USER", "")
+    if ssh_host and ssh_user:
+        ssh_result = executor.ssh_execute_command(
+            host=ssh_host,
+            port=int(os.getenv("LUMIN_CHAT_TEST_SSH_PORT", "22")),
+            username=ssh_user,
+            password=os.getenv("LUMIN_CHAT_TEST_SSH_PASSWORD", ""),
+            command=os.getenv("LUMIN_CHAT_TEST_SSH_COMMAND", "printf ready"),
+            timeout_seconds=30,
+        )
+        require(ssh_result.ok, f"ssh_execute_command failed: {ssh_result.output}")
+        ssh_payload = json.loads(ssh_result.output)
+        require("ready" in ssh_payload.get("stdout", ""), f"unexpected ssh stdout: {ssh_payload}")
 
     print("smoke_test: ok")
     return 0
