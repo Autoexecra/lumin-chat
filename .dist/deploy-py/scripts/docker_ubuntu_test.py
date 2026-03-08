@@ -23,6 +23,39 @@ def remote_run(host: str, port: int, user: str, remote_command: str) -> subproce
     return run(["ssh", "-p", str(port), f"{user}@{host}", remote_command])
 
 
+def sanitize_output(text: str) -> str:
+    """移除 SSH 登录横幅和已知的 Windows OpenSSH 噪声。"""
+
+    if not text:
+        return ""
+
+    lines = text.splitlines()
+    filtered: list[str] = []
+    banner_markers = (
+        "QSemOS(",
+        "____",
+        "/ __ \\",
+        "/ / / /",
+        "/ /_/ /",
+        "\\___\\_\\",
+        "Authorized uses only. All activity may be monitored and reported.",
+        "close - IO is still pending on closed socket.",
+    )
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            if filtered and filtered[-1] != "":
+                filtered.append("")
+            continue
+        if any(marker in stripped for marker in banner_markers):
+            continue
+        if stripped.startswith("PS "):
+            continue
+        filtered.append(line)
+
+    return "\n".join(filtered).strip()
+
+
 def build_test_cases(remote_dir: str) -> list[dict[str, str]]:
     """定义本次 Docker Ubuntu 回归测试的命令集合。"""
 
@@ -87,8 +120,8 @@ def render_report(host: str, port: int, user: str, remote_dir: str, results: lis
 
     for index, item in enumerate(results, start=1):
         status = "通过" if item["returncode"] == 0 else "失败"
-        stdout = (item.get("stdout") or "").strip() or "<empty>"
-        stderr = (item.get("stderr") or "").strip()
+        stdout = sanitize_output(item.get("stdout") or "") or "<empty>"
+        stderr = sanitize_output(item.get("stderr") or "")
         lines.extend(
             [
                 f"### 3.{index} {item['name']} [{status}]",
@@ -132,8 +165,8 @@ def main() -> int:
                 "name": test_case["name"],
                 "command": test_case["command"],
                 "returncode": completed.returncode,
-                "stdout": completed.stdout,
-                "stderr": completed.stderr,
+                "stdout": sanitize_output(completed.stdout),
+                "stderr": sanitize_output(completed.stderr),
             }
         )
 

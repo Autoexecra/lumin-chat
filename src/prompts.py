@@ -9,6 +9,10 @@ def build_system_prompt(config: dict, model_level: int, max_model_level: int) ->
     command_policy = config.get("command_policy", {})
     policy_mode = command_policy.get("mode", "blacklist")
     extension_rules = command_policy.get("extension_rules", [])
+    extension_rules_text = ""
+    if extension_rules:
+        for idx, rule in enumerate(extension_rules, 1):
+            extension_rules_text += f"\n- {rule}"
     rules = command_policy.get("blacklist", []) if policy_mode == "blacklist" else command_policy.get("whitelist", [])
     rule_label = "禁止命令片段" if policy_mode == "blacklist" else "允许命令列表"
     kb = config.get("knowledge_base", {})
@@ -43,8 +47,10 @@ def build_system_prompt(config: dict, model_level: int, max_model_level: int) ->
         - 给用户的最终文本应简洁、可执行、少废话。
         - 生成 shell 命令时必须遵守当前命令策略，避免产出危险指令。
         - 如果连续失败或重复生成同一条失败命令，系统可能自动升级到更高 level，你需要在升级后调整策略而不是重复原方案。
+        - 禁止使用交互式的指令，比如 vim、nano、less、more 等。dnf install 必须加上 -y 参数。docker指令使用docker exec my_container sh -c '指令' 而不是 docker exec -it进入容器内。并且输出不能分页。
+        - 输出尽量使用grep、awk、sed等工具过滤和处理，避免输出过多无关信息。
         扩展规则：
-        {extension_rules if extension_rules else '无'}
+        {extension_rules_text if extension_rules else '无'}
         你可以使用的工具包括:
         - run_shell_command: 执行终端命令
         - change_directory: 切换工作目录

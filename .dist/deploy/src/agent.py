@@ -25,7 +25,7 @@ class CopilotTerminalAgent:
         self.config = config
         self.ui = ui
         self.model_level = model_level
-        self.max_tool_rounds = int(config.get("app", {}).get("max_tool_rounds", 8))
+        self.max_tool_rounds = int(config.get("app", {}).get("max_tool_rounds", 80))
         base_dir = Path(workdir or os.getcwd()).resolve()
         session_dir = base_dir / config.get("app", {}).get("session_dir", ".copilot-terminal/sessions")
         self.session_store = SessionStore(str(session_dir))
