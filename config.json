@@ -1,0 +1,152 @@
+{
+  "app": {
+    "default_model_level": 1,
+    "default_approval_policy": "auto",
+    "max_tool_rounds": 80,
+    "show_thinking": true,
+    "session_dir": ".lumin-chat/sessions"
+  },
+  "command_policy": {
+    "mode": "blacklist",
+    "blacklist": [
+      "rm -rf /",
+      "mkfs",
+      "dd if=",
+      "shutdown",
+      "reboot",
+      "poweroff",
+      "halt",
+      "init 0",
+      "init 6",
+      "systemctl poweroff",
+      "systemctl reboot",
+      "chmod -R 777 /",
+      "chown -R root /",
+      ":(){ :|:& };:"
+    ],
+    "whitelist": [
+      "ls",
+      "pwd",
+      "cd",
+      "cat",
+      "grep",
+      "find",
+      "sed",
+      "awk",
+      "head",
+      "tail",
+      "echo",
+      "printf",
+      "env",
+      "export",
+      "python",
+      "python3",
+      "pip",
+      "git",
+      "make",
+      "cmake",
+      "scp",
+      "ssh",
+      "tar",
+      "mkdir",
+      "cp",
+      "mv",
+      "touch",
+      "stat",
+      "du",
+      "df",
+      "ps",
+      "uname"
+    ],
+    "extension_rules": [
+      "执行完成要生成中文版markdown格式的总结文档，放在/root/目录下，名称总结任务名称命名。包括执行的命令、命令的输出、遇到的问题和解决方案。总结文档要简洁明了，突出重点，方便用户快速了解执行过程和结果。",
+      "如果当前需求是测试相关的，测试一点要细致。",
+      "默认不使用sudo，当前用户本身就有root权限。",
+      "调用run_shell_command 工具，默认超时时间是30s，如果跟网络相关的扩展到5分钟。"
+    ]
+  },
+  "model_escalation": {
+    "enabled": true,
+    "repeat_command_threshold": 3,
+    "consecutive_error_threshold": 4,
+    "upgrade_on_llm_error": true
+  },
+  "knowledge_base": {
+    "enabled": true,
+    "host": "117.72.194.76",
+    "port": 22,
+    "username": "root",
+    "password": "!!!zzxxccvvbbnnmmMMNN12345678",
+    "root_dir": "/root/share/Document-library",
+    "patterns": [
+      "*.md",
+      "*.txt"
+    ]
+  },
+  "deploy": {
+    "host": "117.72.194.76",
+    "port": 3568,
+    "user": "root",
+    "remote_dir": "/root/lumin-chat"
+  },
+  "ai": {
+    "level1": {
+      "name": "qwen3-235b-a22b-thinking-2507",
+      "provider": "iflow",
+      "model": "qwen3-235b-a22b-thinking-2507",
+      "base_url": "https://apis.iflow.cn/v1",
+      "api_key": "sk-108578bf2396a9c396cc5cb1b973e834",
+      "temperature": 0,
+      "max_tokens": 131072,
+      "enable_thinking": true
+    }, 
+    "level2": {
+      "name": "qwen3-235b-a22b-instruct",
+      "provider": "iflow",
+      "model": "qwen3-235b-a22b-instruct",
+      "base_url": "https://apis.iflow.cn/v1",
+      "api_key": "sk-108578bf2396a9c396cc5cb1b973e834",
+      "temperature": 0,
+      "max_tokens": 131072,
+      "enable_thinking": true
+    },     
+    "level3": {
+      "name": "DeepSeek-V3",
+      "provider": "siliconflow",
+      "model": "Pro/deepseek-ai/DeepSeek-V3.2",
+      "base_url": "https://api.siliconflow.cn/v1",
+      "api_key": "sk-icdjqxvbjfzptcpexcpxwksqodfufnsqwhasqwvwzouwhrwm",
+      "temperature": 0.1,
+      "max_tokens": 163840,
+      "enable_thinking": true
+    },
+    "level4": {
+
+      "name": "DeepSeek-V3",
+      "provider": "siliconflow",
+      "model": "Pro/deepseek-ai/DeepSeek-V3.2",
+      "base_url": "https://api.siliconflow.cn/v1",
+      "api_key": "sk-icdjqxvbjfzptcpexcpxwksqodfufnsqwhasqwvwzouwhrwm",
+      "temperature": 0,
+      "max_tokens": 163840,
+      "enable_thinking": true
+    },
+    "level5": {
+      "name": "Qwen3-8B",
+      "provider": "siliconflow",
+      "model": "Qwen/Qwen3-8B",
+      "base_url": "https://api.siliconflow.cn/v1",
+      "api_key": "sk-icdjqxvbjfzptcpexcpxwksqodfufnsqwhasqwvwzouwhrwm",
+      "temperature": 0.1,
+      "max_tokens": 131072,
+      "enable_thinking": true
+    }
+  },
+  "log": {
+    "debug_mode": {
+      "enabled": false,
+      "show_llm_prompts": false,
+      "show_llm_responses": false
+    }
+  }
+}
