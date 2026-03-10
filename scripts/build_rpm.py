@@ -176,6 +176,7 @@ if [[ ! -f "$CONFIG_PATH" ]]; then
 fi
 
 %files
+%defattr(-,root,root,-)
 {APP_DIR}
 %dir {CONFIG_DIR}
 %config(noreplace) {CONFIG_PATH}
