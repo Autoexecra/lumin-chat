@@ -23,6 +23,7 @@ from typing import Callable, Dict, List, Optional
 from src.document_library import KnowledgeBaseClient
 from src.models import ToolCall, ToolExecutionResult
 from src.ssh_client import SSHConnectionConfig, SSHRemoteClient
+from src.web_tools import WebToolClient, format_payload
 
 if os.name != "nt":
     import pty
@@ -232,6 +233,16 @@ class ToolExecutor:
         "write_file": {"path", "content", "append"},
         "get_environment": set(),
         "ssh_execute_command": {"host", "port", "username", "password", "command", "timeout_seconds", "cwd"},
+        "ssh_upload_file": {"host", "port", "username", "password", "local_path", "remote_path"},
+        "ssh_download_file": {"host", "port", "username", "password", "remote_path", "local_path"},
+        "ssh_list_directory": {"host", "port", "username", "password", "path", "recursive", "max_entries"},
+        "ssh_read_file": {"host", "port", "username", "password", "path", "start_line", "end_line"},
+        "ssh_write_file": {"host", "port", "username", "password", "path", "content", "append"},
+        "ssh_make_directory": {"host", "port", "username", "password", "path"},
+        "ssh_remove_path": {"host", "port", "username", "password", "path"},
+        "ssh_path_exists": {"host", "port", "username", "password", "path"},
+        "fetch_web_page": {"url", "timeout_seconds", "max_chars"},
+        "search_web": {"query", "limit", "timeout_seconds"},
         "list_knowledge_documents": {"keyword", "limit"},
         "read_knowledge_document": {"path", "start_line", "end_line"},
     }
@@ -243,6 +254,16 @@ class ToolExecutor:
         "write_file": "content",
         "read_knowledge_document": "path",
         "ssh_execute_command": "command",
+        "ssh_upload_file": "remote_path",
+        "ssh_download_file": "remote_path",
+        "ssh_list_directory": "path",
+        "ssh_read_file": "path",
+        "ssh_write_file": "content",
+        "ssh_make_directory": "path",
+        "ssh_remove_path": "path",
+        "ssh_path_exists": "path",
+        "fetch_web_page": "url",
+        "search_web": "query",
     }
 
     def __init__(
@@ -262,6 +283,7 @@ class ToolExecutor:
         self.blacklist = [item.lower() for item in self.command_policy.get("blacklist", [])]
         self.whitelist = [item.lower() for item in self.command_policy.get("whitelist", [])]
         self.knowledge_base = KnowledgeBaseClient(config)
+        self.web_client = WebToolClient()
 
     def definitions(self) -> List[Dict]:
         """返回提供给大模型的工具定义列表。"""
@@ -393,6 +415,190 @@ class ToolExecutor:
                     },
                 },
             },
+            {
+                "type": "function",
+                "function": {
+                    "name": "ssh_upload_file",
+                    "description": "Upload a local file to a remote host over SSH/SFTP.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "host": {"type": "string", "description": "Remote host IP or domain."},
+                            "port": {"type": "integer", "description": "SSH port.", "default": 22},
+                            "username": {"type": "string", "description": "SSH username."},
+                            "password": {"type": "string", "description": "SSH password. Leave empty for key-based login."},
+                            "local_path": {"type": "string", "description": "Local file path."},
+                            "remote_path": {"type": "string", "description": "Remote destination file path."},
+                        },
+                        "required": ["host", "username", "local_path", "remote_path"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "ssh_download_file",
+                    "description": "Download a file from a remote host over SSH/SFTP.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "host": {"type": "string", "description": "Remote host IP or domain."},
+                            "port": {"type": "integer", "description": "SSH port.", "default": 22},
+                            "username": {"type": "string", "description": "SSH username."},
+                            "password": {"type": "string", "description": "SSH password. Leave empty for key-based login."},
+                            "remote_path": {"type": "string", "description": "Remote source file path."},
+                            "local_path": {"type": "string", "description": "Local destination file path."},
+                        },
+                        "required": ["host", "username", "remote_path", "local_path"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "ssh_list_directory",
+                    "description": "List files and directories on a remote host over SSH/SFTP.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "host": {"type": "string", "description": "Remote host IP or domain."},
+                            "port": {"type": "integer", "description": "SSH port.", "default": 22},
+                            "username": {"type": "string", "description": "SSH username."},
+                            "password": {"type": "string", "description": "SSH password. Leave empty for key-based login."},
+                            "path": {"type": "string", "description": "Remote directory path."},
+                            "recursive": {"type": "boolean", "description": "Whether to recurse.", "default": False},
+                            "max_entries": {"type": "integer", "description": "Maximum number of items.", "default": 200},
+                        },
+                        "required": ["host", "username", "path"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "ssh_read_file",
+                    "description": "Read a text file from a remote host over SSH/SFTP.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "host": {"type": "string", "description": "Remote host IP or domain."},
+                            "port": {"type": "integer", "description": "SSH port.", "default": 22},
+                            "username": {"type": "string", "description": "SSH username."},
+                            "password": {"type": "string", "description": "SSH password. Leave empty for key-based login."},
+                            "path": {"type": "string", "description": "Remote text file path."},
+                            "start_line": {"type": "integer", "description": "1-based starting line.", "default": 1},
+                            "end_line": {"type": "integer", "description": "1-based ending line.", "default": 200},
+                        },
+                        "required": ["host", "username", "path"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "ssh_write_file",
+                    "description": "Write a text file on a remote host over SSH/SFTP.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "host": {"type": "string", "description": "Remote host IP or domain."},
+                            "port": {"type": "integer", "description": "SSH port.", "default": 22},
+                            "username": {"type": "string", "description": "SSH username."},
+                            "password": {"type": "string", "description": "SSH password. Leave empty for key-based login."},
+                            "path": {"type": "string", "description": "Remote text file path."},
+                            "content": {"type": "string", "description": "Text content to write."},
+                            "append": {"type": "boolean", "description": "Append instead of overwrite.", "default": False},
+                        },
+                        "required": ["host", "username", "path", "content"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "ssh_make_directory",
+                    "description": "Create a directory on a remote host over SSH/SFTP.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "host": {"type": "string", "description": "Remote host IP or domain."},
+                            "port": {"type": "integer", "description": "SSH port.", "default": 22},
+                            "username": {"type": "string", "description": "SSH username."},
+                            "password": {"type": "string", "description": "SSH password. Leave empty for key-based login."},
+                            "path": {"type": "string", "description": "Remote directory path."},
+                        },
+                        "required": ["host", "username", "path"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "ssh_remove_path",
+                    "description": "Remove a file or directory on a remote host over SSH/SFTP.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "host": {"type": "string", "description": "Remote host IP or domain."},
+                            "port": {"type": "integer", "description": "SSH port.", "default": 22},
+                            "username": {"type": "string", "description": "SSH username."},
+                            "password": {"type": "string", "description": "SSH password. Leave empty for key-based login."},
+                            "path": {"type": "string", "description": "Remote path to remove."},
+                        },
+                        "required": ["host", "username", "path"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "ssh_path_exists",
+                    "description": "Check whether a path exists on a remote host over SSH/SFTP.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "host": {"type": "string", "description": "Remote host IP or domain."},
+                            "port": {"type": "integer", "description": "SSH port.", "default": 22},
+                            "username": {"type": "string", "description": "SSH username."},
+                            "password": {"type": "string", "description": "SSH password. Leave empty for key-based login."},
+                            "path": {"type": "string", "description": "Remote path to check."},
+                        },
+                        "required": ["host", "username", "path"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "fetch_web_page",
+                    "description": "Fetch a web page, extract the title and readable text content.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "url": {"type": "string", "description": "Target URL."},
+                            "timeout_seconds": {"type": "integer", "description": "Timeout in seconds.", "default": 60},
+                            "max_chars": {"type": "integer", "description": "Maximum extracted text length.", "default": 12000},
+                        },
+                        "required": ["url"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "search_web",
+                    "description": "Search the public web and return titles, links and snippets.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {"type": "string", "description": "Search query."},
+                            "limit": {"type": "integer", "description": "Maximum results.", "default": 5},
+                            "timeout_seconds": {"type": "integer", "description": "Timeout in seconds.", "default": 60},
+                        },
+                        "required": ["query"],
+                    },
+                },
+            },
         ]
         if self.knowledge_base.enabled:
             tools.extend(
@@ -452,6 +658,26 @@ class ToolExecutor:
             return self.get_environment()
         if name == "ssh_execute_command":
             return self.ssh_execute_command(**arguments)
+        if name == "ssh_upload_file":
+            return self.ssh_upload_file(**arguments)
+        if name == "ssh_download_file":
+            return self.ssh_download_file(**arguments)
+        if name == "ssh_list_directory":
+            return self.ssh_list_directory(**arguments)
+        if name == "ssh_read_file":
+            return self.ssh_read_file(**arguments)
+        if name == "ssh_write_file":
+            return self.ssh_write_file(**arguments)
+        if name == "ssh_make_directory":
+            return self.ssh_make_directory(**arguments)
+        if name == "ssh_remove_path":
+            return self.ssh_remove_path(**arguments)
+        if name == "ssh_path_exists":
+            return self.ssh_path_exists(**arguments)
+        if name == "fetch_web_page":
+            return self.fetch_web_page(**arguments)
+        if name == "search_web":
+            return self.search_web(**arguments)
         if name == "list_knowledge_documents":
             return self.list_knowledge_documents(**arguments)
         if name == "read_knowledge_document":
@@ -781,6 +1007,409 @@ class ToolExecutor:
                     )
             return ToolExecutionResult(name="ssh_execute_command", ok=False, output=f"SSH 命令执行失败: {exc}")
 
+    def ssh_upload_file(
+        self,
+        host: str,
+        username: str,
+        local_path: str,
+        remote_path: str,
+        port: int = 22,
+        password: str = "",
+    ) -> ToolExecutionResult:
+        """通过 SFTP 上传本地文件到远端。"""
+
+        allowed, reason = self._check_approval("ssh_upload_file", f"{local_path} -> {username}@{host}:{remote_path}")
+        if not allowed:
+            return ToolExecutionResult(name="ssh_upload_file", ok=False, output=reason)
+
+        local = Path(self._resolve_path(local_path))
+        if not local.exists() or not local.is_file():
+            return ToolExecutionResult(name="ssh_upload_file", ok=False, output=f"本地文件不存在: {local}")
+
+        try:
+            with self._open_ssh_client(host, port, username, password) as client:
+                client.upload_file(local, remote_path)
+            return ToolExecutionResult(
+                name="ssh_upload_file",
+                ok=True,
+                output=json.dumps(
+                    {
+                        "host": host,
+                        "port": port,
+                        "username": username,
+                        "local_path": str(local),
+                        "remote_path": remote_path,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+            )
+        except Exception as exc:
+            if not password and self._upload_file_via_cli(host, int(port), username, local, remote_path):
+                return ToolExecutionResult(
+                    name="ssh_upload_file",
+                    ok=True,
+                    output=json.dumps(
+                        {
+                            "host": host,
+                            "port": port,
+                            "username": username,
+                            "local_path": str(local),
+                            "remote_path": remote_path,
+                            "transport": "scp-cli",
+                        },
+                        ensure_ascii=False,
+                        indent=2,
+                    ),
+                )
+            return ToolExecutionResult(name="ssh_upload_file", ok=False, output=f"SSH 上传失败: {exc}")
+
+    def ssh_download_file(
+        self,
+        host: str,
+        username: str,
+        remote_path: str,
+        local_path: str,
+        port: int = 22,
+        password: str = "",
+    ) -> ToolExecutionResult:
+        """通过 SFTP 下载远端文件到本地。"""
+
+        local = Path(self._resolve_path(local_path))
+        allowed, reason = self._check_approval("ssh_download_file", f"{username}@{host}:{remote_path} -> {local}")
+        if not allowed:
+            return ToolExecutionResult(name="ssh_download_file", ok=False, output=reason)
+
+        try:
+            with self._open_ssh_client(host, port, username, password) as client:
+                client.download_file(remote_path, local)
+            return ToolExecutionResult(
+                name="ssh_download_file",
+                ok=True,
+                output=json.dumps(
+                    {
+                        "host": host,
+                        "port": port,
+                        "username": username,
+                        "remote_path": remote_path,
+                        "local_path": str(local),
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+            )
+        except Exception as exc:
+            if not password and self._download_file_via_cli(host, int(port), username, remote_path, local):
+                return ToolExecutionResult(
+                    name="ssh_download_file",
+                    ok=True,
+                    output=json.dumps(
+                        {
+                            "host": host,
+                            "port": port,
+                            "username": username,
+                            "remote_path": remote_path,
+                            "local_path": str(local),
+                            "transport": "scp-cli",
+                        },
+                        ensure_ascii=False,
+                        indent=2,
+                    ),
+                )
+            return ToolExecutionResult(name="ssh_download_file", ok=False, output=f"SSH 下载失败: {exc}")
+
+    def ssh_list_directory(
+        self,
+        host: str,
+        username: str,
+        path: str,
+        port: int = 22,
+        password: str = "",
+        recursive: bool = False,
+        max_entries: int = 200,
+    ) -> ToolExecutionResult:
+        """列出远端目录内容。"""
+
+        try:
+            with self._open_ssh_client(host, port, username, password) as client:
+                payload = client.list_directory(path, recursive=recursive, max_entries=max_entries)
+            return ToolExecutionResult(name="ssh_list_directory", ok=True, output=json.dumps(payload, ensure_ascii=False, indent=2))
+        except Exception as exc:
+            if not password:
+                command = (
+                    "python3 - <<'PY'\n"
+                    "import json, os\n"
+                    f"target = {path!r}\n"
+                    f"recursive = {bool(recursive)!r}\n"
+                    f"max_entries = {int(max_entries)!r}\n"
+                    "results = []\n"
+                    "for root, dirs, files in os.walk(target):\n"
+                    "    if root != target:\n"
+                    "        rel_root = os.path.relpath(root, target)\n"
+                    "        results.append({'path': root, 'relative_path': rel_root, 'type': 'dir', 'size': None})\n"
+                    "        if len(results) >= max_entries:\n"
+                    "            break\n"
+                    "    for name in sorted(files):\n"
+                    "        current = os.path.join(root, name)\n"
+                    "        rel = os.path.relpath(current, target)\n"
+                    "        results.append({'path': current, 'relative_path': rel, 'type': 'file', 'size': os.path.getsize(current)})\n"
+                    "        if len(results) >= max_entries:\n"
+                    "            break\n"
+                    "    if len(results) >= max_entries or not recursive:\n"
+                    "        if not recursive:\n"
+                    "            for name in sorted(dirs):\n"
+                    "                current = os.path.join(root, name)\n"
+                    "                rel = os.path.relpath(current, target)\n"
+                    "                results.append({'path': current, 'relative_path': rel, 'type': 'dir', 'size': None})\n"
+                    "                if len(results) >= max_entries:\n"
+                    "                    break\n"
+                    "        break\n"
+                    "print(json.dumps(results, ensure_ascii=False))\n"
+                    "PY"
+                )
+                fallback = self._run_ssh_command_via_cli(host, int(port), username, command, 120, None)
+                if fallback is not None and int(fallback.get("exit_code", 1)) == 0:
+                    return ToolExecutionResult(name="ssh_list_directory", ok=True, output=self._truncate(str(fallback.get("stdout", ""))))
+            return ToolExecutionResult(name="ssh_list_directory", ok=False, output=f"SSH 目录读取失败: {exc}")
+
+    def ssh_read_file(
+        self,
+        host: str,
+        username: str,
+        path: str,
+        port: int = 22,
+        password: str = "",
+        start_line: int = 1,
+        end_line: int = 200,
+    ) -> ToolExecutionResult:
+        """读取远端文本文件。"""
+
+        try:
+            with self._open_ssh_client(host, port, username, password) as client:
+                payload = client.read_file(path, start_line=start_line, end_line=end_line)
+            return ToolExecutionResult(name="ssh_read_file", ok=True, output=payload)
+        except Exception as exc:
+            if not password:
+                command = (
+                    "awk 'NR>="
+                    + str(int(start_line))
+                    + " && NR<="
+                    + str(int(end_line))
+                    + " {printf \"%d: %s\\n\", NR, $0}' "
+                    + shlex.quote(path)
+                )
+                fallback = self._run_ssh_command_via_cli(host, int(port), username, command, 120, None)
+                if fallback is not None and int(fallback.get("exit_code", 1)) == 0:
+                    return ToolExecutionResult(name="ssh_read_file", ok=True, output=str(fallback.get("stdout", "")).rstrip())
+            return ToolExecutionResult(name="ssh_read_file", ok=False, output=f"SSH 文件读取失败: {exc}")
+
+    def ssh_write_file(
+        self,
+        host: str,
+        username: str,
+        path: str,
+        content: str,
+        port: int = 22,
+        password: str = "",
+        append: bool = False,
+    ) -> ToolExecutionResult:
+        """写入远端文本文件。"""
+
+        allowed, reason = self._check_approval("ssh_write_file", f"{username}@{host}:{path}")
+        if not allowed:
+            return ToolExecutionResult(name="ssh_write_file", ok=False, output=reason)
+
+        try:
+            with self._open_ssh_client(host, port, username, password) as client:
+                client.write_file(path, content, append=append)
+            return ToolExecutionResult(
+                name="ssh_write_file",
+                ok=True,
+                output=json.dumps(
+                    {
+                        "host": host,
+                        "port": port,
+                        "username": username,
+                        "path": path,
+                        "append": append,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+            )
+        except Exception as exc:
+            if not password:
+                import tempfile
+
+                with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False) as handle:
+                    handle.write(content)
+                    temp_path = Path(handle.name)
+                try:
+                    if append:
+                        upload_ok = self._upload_file_via_cli(host, int(port), username, temp_path, f"{path}.lumin-chat.tmp")
+                        if upload_ok:
+                            parent_path = str(Path(path).parent).replace("\\", "/")
+                            command = (
+                                f"mkdir -p {shlex.quote(parent_path)} && "
+                                f"cat {shlex.quote(path + '.lumin-chat.tmp')} >> {shlex.quote(path)} && "
+                                f"rm -f {shlex.quote(path + '.lumin-chat.tmp')}"
+                            )
+                            fallback = self._run_ssh_command_via_cli(host, int(port), username, command, 120, None)
+                            if fallback is not None and int(fallback.get("exit_code", 1)) == 0:
+                                return ToolExecutionResult(name="ssh_write_file", ok=True, output=json.dumps({"path": path, "append": append, "transport": "ssh-cli"}, ensure_ascii=False, indent=2))
+                    elif self._upload_file_via_cli(host, int(port), username, temp_path, path):
+                        return ToolExecutionResult(name="ssh_write_file", ok=True, output=json.dumps({"path": path, "append": append, "transport": "scp-cli"}, ensure_ascii=False, indent=2))
+                finally:
+                    temp_path.unlink(missing_ok=True)
+            return ToolExecutionResult(name="ssh_write_file", ok=False, output=f"SSH 文件写入失败: {exc}")
+
+    def ssh_make_directory(
+        self,
+        host: str,
+        username: str,
+        path: str,
+        port: int = 22,
+        password: str = "",
+    ) -> ToolExecutionResult:
+        """创建远端目录。"""
+
+        allowed, reason = self._check_approval("ssh_make_directory", f"{username}@{host}:{path}")
+        if not allowed:
+            return ToolExecutionResult(name="ssh_make_directory", ok=False, output=reason)
+
+        try:
+            with self._open_ssh_client(host, port, username, password) as client:
+                client.ensure_remote_dir(path)
+            return ToolExecutionResult(name="ssh_make_directory", ok=True, output=f"已创建远端目录: {path}")
+        except Exception as exc:
+            if not password:
+                fallback = self._run_ssh_command_via_cli(host, int(port), username, f"mkdir -p {shlex.quote(path)}", 120, None)
+                if fallback is not None and int(fallback.get("exit_code", 1)) == 0:
+                    return ToolExecutionResult(name="ssh_make_directory", ok=True, output=f"已创建远端目录: {path}")
+            return ToolExecutionResult(name="ssh_make_directory", ok=False, output=f"SSH 目录创建失败: {exc}")
+
+    def ssh_remove_path(
+        self,
+        host: str,
+        username: str,
+        path: str,
+        port: int = 22,
+        password: str = "",
+    ) -> ToolExecutionResult:
+        """删除远端路径。"""
+
+        allowed, reason = self._check_approval("ssh_remove_path", f"{username}@{host}:{path}")
+        if not allowed:
+            return ToolExecutionResult(name="ssh_remove_path", ok=False, output=reason)
+
+        try:
+            with self._open_ssh_client(host, port, username, password) as client:
+                payload = client.remove_remote_path(path)
+            exit_code = int(payload.get("exit_code", 1))
+            payload["stdout"] = self._truncate(str(payload.get("stdout", "")))
+            payload["stderr"] = self._truncate(str(payload.get("stderr", "")))
+            return ToolExecutionResult(
+                name="ssh_remove_path",
+                ok=exit_code == 0,
+                output=json.dumps(payload, ensure_ascii=False, indent=2),
+                metadata={"exit_code": exit_code},
+            )
+        except Exception as exc:
+            if not password:
+                fallback = self._run_ssh_command_via_cli(host, int(port), username, f"rm -rf {shlex.quote(path)}", 120, None)
+                if fallback is not None:
+                    exit_code = int(fallback.get("exit_code", 1))
+                    return ToolExecutionResult(
+                        name="ssh_remove_path",
+                        ok=exit_code == 0,
+                        output=json.dumps(fallback, ensure_ascii=False, indent=2),
+                        metadata={"exit_code": exit_code},
+                    )
+            return ToolExecutionResult(name="ssh_remove_path", ok=False, output=f"SSH 路径删除失败: {exc}")
+
+    def ssh_path_exists(
+        self,
+        host: str,
+        username: str,
+        path: str,
+        port: int = 22,
+        password: str = "",
+    ) -> ToolExecutionResult:
+        """检查远端路径是否存在。"""
+
+        try:
+            with self._open_ssh_client(host, port, username, password) as client:
+                exists = client.path_exists(path)
+            return ToolExecutionResult(
+                name="ssh_path_exists",
+                ok=True,
+                output=json.dumps(
+                    {
+                        "host": host,
+                        "port": port,
+                        "username": username,
+                        "path": path,
+                        "exists": exists,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+            )
+        except Exception as exc:
+            if not password:
+                fallback = self._run_ssh_command_via_cli(host, int(port), username, f"test -e {shlex.quote(path)}", 120, None)
+                if fallback is not None:
+                    return ToolExecutionResult(
+                        name="ssh_path_exists",
+                        ok=True,
+                        output=json.dumps(
+                            {
+                                "host": host,
+                                "port": port,
+                                "username": username,
+                                "path": path,
+                                "exists": int(fallback.get("exit_code", 1)) == 0,
+                                "transport": "ssh-cli",
+                            },
+                            ensure_ascii=False,
+                            indent=2,
+                        ),
+                    )
+            return ToolExecutionResult(name="ssh_path_exists", ok=False, output=f"SSH 路径检查失败: {exc}")
+
+    def fetch_web_page(self, url: str, timeout_seconds: int = 60, max_chars: int = 12000) -> ToolExecutionResult:
+        """抓取网页并提取可读正文。"""
+
+        try:
+            self.web_client.timeout_seconds = min(max(int(timeout_seconds), 1), 600)
+            payload = self.web_client.fetch_page(url=url, max_chars=max_chars)
+            return ToolExecutionResult(name="fetch_web_page", ok=True, output=format_payload(payload))
+        except Exception as exc:
+            return ToolExecutionResult(name="fetch_web_page", ok=False, output=f"网页抓取失败: {exc}")
+
+    def search_web(self, query: str, limit: int = 5, timeout_seconds: int = 60) -> ToolExecutionResult:
+        """执行公开网页搜索。"""
+
+        try:
+            self.web_client.timeout_seconds = min(max(int(timeout_seconds), 1), 600)
+            payload = self.web_client.search(query=query, limit=max(1, min(int(limit), 10)))
+            return ToolExecutionResult(name="search_web", ok=True, output=format_payload(payload))
+        except Exception as exc:
+            return ToolExecutionResult(name="search_web", ok=False, output=f"网页搜索失败: {exc}")
+
+    @staticmethod
+    def _open_ssh_client(host: str, port: int, username: str, password: str) -> SSHRemoteClient:
+        """构造 SSH 客户端。"""
+
+        connection = SSHConnectionConfig(
+            host=host,
+            port=int(port),
+            username=username,
+            password=password,
+            timeout_seconds=60,
+        )
+        return SSHRemoteClient(connection)
+
     def _resolve_path(self, raw_path: str) -> str:
         """将相对路径解析为基于当前 cwd 的绝对路径。"""
 
@@ -1021,3 +1650,72 @@ class ToolExecutor:
             "username": username,
             "transport": "ssh-cli",
         }
+
+    @staticmethod
+    def _upload_file_via_cli(host: str, port: int, username: str, local_path: Path, remote_path: str) -> bool:
+        """使用 scp 上传文件，作为无 Paramiko 场景下的回退方案。"""
+
+        target = f"{username}@{host}" if username else host
+        try:
+            parent = Path(remote_path).parent.as_posix()
+            subprocess.run(
+                [
+                    "ssh",
+                    "-o",
+                    "StrictHostKeyChecking=no",
+                    "-p",
+                    str(port),
+                    target,
+                    f"mkdir -p {shlex.quote(parent)}",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                check=True,
+            )
+            subprocess.run(
+                [
+                    "scp",
+                    "-O",
+                    "-o",
+                    "StrictHostKeyChecking=no",
+                    "-P",
+                    str(port),
+                    str(local_path),
+                    f"{target}:{remote_path}",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                check=True,
+            )
+            return True
+        except Exception:
+            return False
+
+    @staticmethod
+    def _download_file_via_cli(host: str, port: int, username: str, remote_path: str, local_path: Path) -> bool:
+        """使用 scp 下载文件，作为无 Paramiko 场景下的回退方案。"""
+
+        target = f"{username}@{host}" if username else host
+        try:
+            local_path.parent.mkdir(parents=True, exist_ok=True)
+            subprocess.run(
+                [
+                    "scp",
+                    "-O",
+                    "-o",
+                    "StrictHostKeyChecking=no",
+                    "-P",
+                    str(port),
+                    f"{target}:{remote_path}",
+                    str(local_path),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                check=True,
+            )
+            return True
+        except Exception:
+            return False

@@ -56,21 +56,33 @@ def sanitize_output(text: str) -> str:
     return "\n".join(filtered).strip()
 
 
-def build_test_cases(remote_dir: str) -> list[dict[str, str]]:
+def build_test_cases(
+    remote_dir: str = "/var/lib/lumin-chat",
+    launcher_path: str = "/usr/bin/lumin-chat",
+    config_path: str = "/etc/lumin-chat/config.json",
+) -> list[dict[str, str]]:
     """定义本次 Docker Ubuntu 回归测试的命令集合。"""
 
     return [
+        {
+            "name": "检查 RPM 安装状态",
+            "command": "rpm -q lumin-chat",
+        },
         {
             "name": "检查 Docker 版本",
             "command": "docker --version",
         },
         {
-            "name": "检查项目帮助信息",
-            "command": f"cd {remote_dir} && .venv/bin/python main.py --help",
+            "name": "检查系统配置文件",
+            "command": f"test -f {config_path} && python3 - <<'PY'\nimport json\nwith open('{config_path}', 'r', encoding='utf-8') as handle:\n    payload = json.load(handle)\nprint(payload.get('app', {{}}).get('default_model_level', 'missing'))\nPY",
+        },
+        {
+            "name": "检查启动脚本帮助信息",
+            "command": f"{launcher_path} --help",
         },
         {
             "name": "执行项目冒烟测试",
-            "command": f"cd {remote_dir} && .venv/bin/python scripts/smoke_test.py",
+            "command": f"cd {remote_dir} && python3 scripts/smoke_test.py",
         },
         {
             "name": "拉取 Ubuntu 镜像",
@@ -153,12 +165,14 @@ def main() -> int:
     parser.add_argument("--host", default="117.72.194.76")
     parser.add_argument("--port", type=int, default=3568)
     parser.add_argument("--user", default="root")
-    parser.add_argument("--remote-dir", default="/root/lumin-chat")
+    parser.add_argument("--remote-dir", default="/var/lib/lumin-chat")
+    parser.add_argument("--launcher", default="/usr/bin/lumin-chat")
+    parser.add_argument("--config-path", default="/etc/lumin-chat/config.json")
     parser.add_argument("--report", default=str(DEFAULT_REPORT))
     args = parser.parse_args()
 
     results: list[dict[str, object]] = []
-    for test_case in build_test_cases(args.remote_dir):
+    for test_case in build_test_cases(args.remote_dir, args.launcher, args.config_path):
         completed = remote_run(args.host, args.port, args.user, test_case["command"])
         results.append(
             {

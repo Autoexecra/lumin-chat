@@ -58,6 +58,18 @@ def main() -> int:
         require(written.exists(), "raw parser did not create file")
         written.unlink(missing_ok=True)
 
+    malformed_raw = executor.execute(
+        ToolCall(
+            id="malformed-write",
+            name="write_file",
+            arguments={
+                "raw": '{"path": "/tmp/lumin-chat-malformed.txt", "content": "hello"',
+            },
+        )
+    )
+    require(malformed_raw.ok, f"malformed raw write parse failed: {malformed_raw.output}")
+    Path("/tmp/lumin-chat-malformed.txt").unlink(missing_ok=True)
+
     pwd_result = executor.run_shell_command("pwd" if os.name != "nt" else "Get-Location | Select-Object -ExpandProperty Path")
     require(pwd_result.ok, f"pwd failed: {pwd_result.output}")
 
@@ -101,6 +113,93 @@ def main() -> int:
         require(ssh_result.ok, f"ssh_execute_command failed: {ssh_result.output}")
         ssh_payload = json.loads(ssh_result.output)
         require("ready" in ssh_payload.get("stdout", ""), f"unexpected ssh stdout: {ssh_payload}")
+
+        remote_dir = os.getenv("LUMIN_CHAT_TEST_SSH_TMPDIR", "/tmp/lumin-chat-ssh-tools")
+        local_upload = PROJECT_ROOT / ".dist" / "ssh-upload.txt"
+        local_download = PROJECT_ROOT / ".dist" / "ssh-download.txt"
+        local_upload.parent.mkdir(parents=True, exist_ok=True)
+        local_upload.write_text("ssh file tool ready\n", encoding="utf-8")
+
+        mkdir_result = executor.ssh_make_directory(
+            host=ssh_host,
+            port=int(os.getenv("LUMIN_CHAT_TEST_SSH_PORT", "22")),
+            username=ssh_user,
+            password=os.getenv("LUMIN_CHAT_TEST_SSH_PASSWORD", ""),
+            path=remote_dir,
+        )
+        require(mkdir_result.ok, f"ssh_make_directory failed: {mkdir_result.output}")
+
+        upload_result = executor.ssh_upload_file(
+            host=ssh_host,
+            port=int(os.getenv("LUMIN_CHAT_TEST_SSH_PORT", "22")),
+            username=ssh_user,
+            password=os.getenv("LUMIN_CHAT_TEST_SSH_PASSWORD", ""),
+            local_path=str(local_upload),
+            remote_path=f"{remote_dir}/upload.txt",
+        )
+        require(upload_result.ok, f"ssh_upload_file failed: {upload_result.output}")
+
+        read_result = executor.ssh_read_file(
+            host=ssh_host,
+            port=int(os.getenv("LUMIN_CHAT_TEST_SSH_PORT", "22")),
+            username=ssh_user,
+            password=os.getenv("LUMIN_CHAT_TEST_SSH_PASSWORD", ""),
+            path=f"{remote_dir}/upload.txt",
+            start_line=1,
+            end_line=5,
+        )
+        require(read_result.ok and "ready" in read_result.output, f"ssh_read_file failed: {read_result.output}")
+
+        write_result = executor.ssh_write_file(
+            host=ssh_host,
+            port=int(os.getenv("LUMIN_CHAT_TEST_SSH_PORT", "22")),
+            username=ssh_user,
+            password=os.getenv("LUMIN_CHAT_TEST_SSH_PASSWORD", ""),
+            path=f"{remote_dir}/generated.txt",
+            content="generated via ssh_write_file\n",
+        )
+        require(write_result.ok, f"ssh_write_file failed: {write_result.output}")
+
+        exists_result = executor.ssh_path_exists(
+            host=ssh_host,
+            port=int(os.getenv("LUMIN_CHAT_TEST_SSH_PORT", "22")),
+            username=ssh_user,
+            password=os.getenv("LUMIN_CHAT_TEST_SSH_PASSWORD", ""),
+            path=f"{remote_dir}/generated.txt",
+        )
+        require(exists_result.ok, f"ssh_path_exists failed: {exists_result.output}")
+        require(json.loads(exists_result.output).get("exists") is True, f"ssh_path_exists unexpected: {exists_result.output}")
+
+        list_result = executor.ssh_list_directory(
+            host=ssh_host,
+            port=int(os.getenv("LUMIN_CHAT_TEST_SSH_PORT", "22")),
+            username=ssh_user,
+            password=os.getenv("LUMIN_CHAT_TEST_SSH_PASSWORD", ""),
+            path=remote_dir,
+            recursive=True,
+            max_entries=20,
+        )
+        require(list_result.ok and "generated.txt" in list_result.output, f"ssh_list_directory failed: {list_result.output}")
+
+        download_result = executor.ssh_download_file(
+            host=ssh_host,
+            port=int(os.getenv("LUMIN_CHAT_TEST_SSH_PORT", "22")),
+            username=ssh_user,
+            password=os.getenv("LUMIN_CHAT_TEST_SSH_PASSWORD", ""),
+            remote_path=f"{remote_dir}/generated.txt",
+            local_path=str(local_download),
+        )
+        require(download_result.ok, f"ssh_download_file failed: {download_result.output}")
+        require(local_download.read_text(encoding="utf-8").startswith("generated"), "ssh_download_file content mismatch")
+
+        remove_result = executor.ssh_remove_path(
+            host=ssh_host,
+            port=int(os.getenv("LUMIN_CHAT_TEST_SSH_PORT", "22")),
+            username=ssh_user,
+            password=os.getenv("LUMIN_CHAT_TEST_SSH_PASSWORD", ""),
+            path=remote_dir,
+        )
+        require(remove_result.ok, f"ssh_remove_path failed: {remove_result.output}")
 
     print("smoke_test: ok")
     return 0

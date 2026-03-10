@@ -2,10 +2,10 @@
 
 ## 1. 测试环境
 
-- 生成时间: 2026-03-09 00:35:22
-- 目标主机: root@117.72.194.76:3568
-- 远端目录: /root/lumin-chat
-- 通过情况: 7/7
+- 生成时间: 2026-03-10 10:31:36
+- 目标主机: yanggan@tl3588:22
+- 远端目录: /var/lib/lumin-chat
+- 通过情况: 9/9
 
 ## 2. 总结
 
@@ -13,7 +13,26 @@
 
 ## 3. 详细结果
 
-### 3.1 检查 Docker 版本 [通过]
+### 3.1 检查 RPM 安装状态 [通过]
+
+命令：
+```bash
+rpm -q lumin-chat
+```
+
+退出码：0
+
+标准输出：
+```text
+lumin-chat-0.1.0-1.noarch
+```
+
+标准错误：
+```text
+Warning: Permanently added '192.168.0.11' (ED25519) to the list of known hosts.
+```
+
+### 3.2 检查 Docker 版本 [通过]
 
 命令：
 ```bash
@@ -27,11 +46,40 @@ docker --version
 Docker version 20.10.25-ce, build 911449ca24
 ```
 
-### 3.2 检查项目帮助信息 [通过]
+标准错误：
+```text
+Warning: Permanently added '192.168.0.11' (ED25519) to the list of known hosts.
+```
+
+### 3.3 检查系统配置文件 [通过]
 
 命令：
 ```bash
-cd /root/lumin-chat && .venv/bin/python main.py --help
+test -f /etc/lumin-chat/config.json && python3 - <<'PY'
+import json
+with open('/etc/lumin-chat/config.json', 'r', encoding='utf-8') as handle:
+    payload = json.load(handle)
+print(payload.get('app', {}).get('default_model_level', 'missing'))
+PY
+```
+
+退出码：0
+
+标准输出：
+```text
+1
+```
+
+标准错误：
+```text
+Warning: Permanently added '192.168.0.11' (ED25519) to the list of known hosts.
+```
+
+### 3.4 检查启动脚本帮助信息 [通过]
+
+命令：
+```bash
+/usr/bin/lumin-chat --help
 ```
 
 退出码：0
@@ -67,11 +115,16 @@ options:
   --hide-thinking       隐藏 thinking 流
 ```
 
-### 3.3 执行项目冒烟测试 [通过]
+标准错误：
+```text
+Warning: Permanently added '192.168.0.11' (ED25519) to the list of known hosts.
+```
+
+### 3.5 执行项目冒烟测试 [通过]
 
 命令：
 ```bash
-cd /root/lumin-chat && .venv/bin/python scripts/smoke_test.py
+cd /var/lib/lumin-chat && python3 scripts/smoke_test.py
 ```
 
 退出码：0
@@ -81,7 +134,12 @@ cd /root/lumin-chat && .venv/bin/python scripts/smoke_test.py
 smoke_test: ok
 ```
 
-### 3.4 拉取 Ubuntu 镜像 [通过]
+标准错误：
+```text
+Warning: Permanently added '192.168.0.11' (ED25519) to the list of known hosts.
+```
+
+### 3.6 拉取 Ubuntu 镜像 [通过]
 
 命令：
 ```bash
@@ -98,7 +156,12 @@ Status: Image is up to date for ubuntu:latest
 docker.io/library/ubuntu:latest
 ```
 
-### 3.5 读取 Ubuntu 系统信息 [通过]
+标准错误：
+```text
+Warning: Permanently added '192.168.0.11' (ED25519) to the list of known hosts.
+```
+
+### 3.7 读取 Ubuntu 系统信息 [通过]
 
 命令：
 ```bash
@@ -119,7 +182,12 @@ ID_LIKE=debian
 HOME_URL="https://www.ubuntu.com/"
 ```
 
-### 3.6 验证容器内文件写入 [通过]
+标准错误：
+```text
+Warning: Permanently added '192.168.0.11' (ED25519) to the list of known hosts.
+```
+
+### 3.8 验证容器内文件写入 [通过]
 
 命令：
 ```bash
@@ -133,7 +201,12 @@ docker run --rm ubuntu:latest sh -lc 'mkdir -p /tmp/lumin-chat && echo ready > /
 ready
 ```
 
-### 3.7 验证容器内目录遍历 [通过]
+标准错误：
+```text
+Warning: Permanently added '192.168.0.11' (ED25519) to the list of known hosts.
+```
+
+### 3.9 验证容器内目录遍历 [通过]
 
 命令：
 ```bash
@@ -163,4 +236,9 @@ sys
 tmp
 usr
 var
+```
+
+标准错误：
+```text
+Warning: Permanently added '192.168.0.11' (ED25519) to the list of known hosts.
 ```

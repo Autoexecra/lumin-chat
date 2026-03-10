@@ -3,11 +3,39 @@
 import argparse
 import json
 import os
+import sys
 from typing import Optional
+
+try:
+    from prompt_toolkit import PromptSession
+    from prompt_toolkit.history import FileHistory
+except ImportError:
+    PromptSession = None
+    FileHistory = None
 
 from src.agent import LuminChatAgent
 from src.config_loader import load_config
 from src.ui import TerminalUI
+
+
+def ensure_utf8_stdio() -> None:
+    """尽量把标准输入输出切换到 UTF-8，降低中文乱码概率。"""
+
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            reconfigure(encoding="utf-8", errors="replace")
+
+
+def build_prompt_session(workdir: str) -> Optional["PromptSession[str]"]:
+    """构造具备历史记录的交互输入会话。"""
+
+    if PromptSession is None or FileHistory is None:
+        return None
+    history_dir = os.path.join(workdir, ".lumin-chat")
+    os.makedirs(history_dir, exist_ok=True)
+    history_path = os.path.join(history_dir, "history")
+    return PromptSession(history=FileHistory(history_path))
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -45,6 +73,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Optional[list[str]] = None) -> int:
     """运行命令行主入口。"""
 
+    ensure_utf8_stdio()
     parser = build_parser()
     args = parser.parse_args(argv)
 
@@ -84,10 +113,14 @@ def main(argv: Optional[list[str]] = None) -> int:
         command_policy_mode=agent.command_policy_state().get("mode", "blacklist"),
         session_path=str(agent.session_path),
     )
+    prompt_session = build_prompt_session(agent.cwd)
 
     while True:
         try:
-            user_input = input("you> ").strip()
+            if prompt_session is not None:
+                user_input = prompt_session.prompt("you> ").strip()
+            else:
+                user_input = input("you> ").strip()
         except EOFError:
             return 0
         except KeyboardInterrupt:

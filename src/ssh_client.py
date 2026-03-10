@@ -6,7 +6,8 @@ import posixpath
 import shlex
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, Optional
+from stat import S_ISDIR, S_ISREG
+from typing import Dict, Iterable, List, Optional
 
 try:
     import paramiko
@@ -150,6 +151,69 @@ class SSHRemoteClient:
         finally:
             sftp.close()
 
+    def list_directory(self, remote_dir: str, recursive: bool = False, max_entries: int = 200) -> List[Dict[str, object]]:
+        """列出远端目录内容。"""
+
+        self.connect()
+        entries: List[Dict[str, object]] = []
+        sftp = self._client.open_sftp()
+        try:
+            self._walk_directory(sftp, remote_dir, remote_dir, recursive, max_entries, entries)
+        finally:
+            sftp.close()
+        return entries
+
+    def read_file(self, remote_path: str, start_line: int = 1, end_line: int = 200) -> str:
+        """读取远端文本文件指定行范围。"""
+
+        self.connect()
+        start_line = max(1, int(start_line))
+        end_line = max(start_line, int(end_line))
+        sftp = self._client.open_sftp()
+        try:
+            with sftp.open(remote_path, "r") as handle:
+                payload = handle.read()
+        finally:
+            sftp.close()
+
+        if isinstance(payload, bytes):
+            text = payload.decode("utf-8", errors="replace")
+        else:
+            text = payload
+        lines = text.splitlines()
+        selected = lines[start_line - 1 : end_line]
+        return "\n".join(f"{index}: {line}" for index, line in enumerate(selected, start=start_line))
+
+    def write_file(self, remote_path: str, content: str, append: bool = False) -> None:
+        """写入远端文本文件。"""
+
+        self.connect()
+        self.ensure_remote_dir(posixpath.dirname(remote_path) or "/")
+        sftp = self._client.open_sftp()
+        try:
+            mode = "a" if append else "w"
+            with sftp.open(remote_path, mode) as handle:
+                if isinstance(content, str):
+                    handle.write(content)
+                else:
+                    handle.write(str(content))
+        finally:
+            sftp.close()
+
+    def path_exists(self, remote_path: str) -> bool:
+        """检查远端路径是否存在。"""
+
+        self.connect()
+        sftp = self._client.open_sftp()
+        try:
+            try:
+                sftp.stat(remote_path)
+                return True
+            except OSError:
+                return False
+        finally:
+            sftp.close()
+
     def upload_tree(self, local_root: Path, remote_root: str, exclude_names: Optional[Iterable[str]] = None) -> None:
         """递归上传目录树，自动跳过缓存与无关产物。"""
 
@@ -169,6 +233,40 @@ class SSHRemoteClient:
         """删除远端路径。"""
 
         return self.run(f"rm -rf {shlex.quote(remote_path)}")
+
+    def _walk_directory(
+        self,
+        sftp,
+        current_path: str,
+        root_path: str,
+        recursive: bool,
+        max_entries: int,
+        results: List[Dict[str, object]],
+    ) -> None:
+        """遍历远端目录。"""
+
+        if len(results) >= max_entries:
+            return
+        for entry in sftp.listdir_attr(current_path):
+            remote_path = posixpath.join(current_path, entry.filename)
+            relative_path = posixpath.relpath(remote_path, root_path)
+            is_dir = S_ISDIR(entry.st_mode)
+            if not (is_dir or S_ISREG(entry.st_mode)):
+                continue
+            results.append(
+                {
+                    "path": remote_path,
+                    "relative_path": "." if relative_path == "." else relative_path,
+                    "type": "dir" if is_dir else "file",
+                    "size": None if is_dir else entry.st_size,
+                }
+            )
+            if len(results) >= max_entries:
+                return
+            if recursive and is_dir:
+                self._walk_directory(sftp, remote_path, root_path, recursive, max_entries, results)
+                if len(results) >= max_entries:
+                    return
 
     @staticmethod
     def _wrap_command(command: str, cwd: Optional[str], env: Optional[Dict[str, str]]) -> str:

@@ -7,6 +7,9 @@ from pathlib import Path
 from typing import Any, Dict
 
 
+SYSTEM_CONFIG_PATH = Path("/etc/lumin-chat/config.json")
+
+
 DEFAULT_CONFIG: Dict[str, Any] = {
     "app": {
         "default_model_level": 1,
@@ -123,8 +126,17 @@ def load_config(config_path: str) -> Dict[str, Any]:
     """加载配置文件并补齐默认值与环境变量覆盖。"""
 
     path = Path(config_path)
-    with path.open("r", encoding="utf-8") as handle:
-        raw = json.load(handle)
+    raw: Dict[str, Any] = {}
+    if path.exists():
+        with path.open("r", encoding="utf-8") as handle:
+            raw = json.load(handle)
+    elif path != SYSTEM_CONFIG_PATH and not SYSTEM_CONFIG_PATH.exists():
+        raise FileNotFoundError(f"配置文件不存在: {path}")
+
+    if SYSTEM_CONFIG_PATH.exists() and SYSTEM_CONFIG_PATH != path:
+        with SYSTEM_CONFIG_PATH.open("r", encoding="utf-8") as handle:
+            system_raw = json.load(handle)
+        raw = _deep_merge(raw, system_raw)
 
     config = _deep_merge(DEFAULT_CONFIG, raw)
     ai_config = config.get("ai", {})

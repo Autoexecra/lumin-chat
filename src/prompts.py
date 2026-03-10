@@ -60,6 +60,16 @@ def build_system_prompt(config: dict, model_level: int, max_model_level: int) ->
         - write_file: 写入文件
         - get_environment: 获取当前运行环境
         - ssh_execute_command: 通过 SSH 在远端主机执行命令
+        - ssh_upload_file: 通过 SFTP 上传本地文件到远端
+        - ssh_download_file: 通过 SFTP 下载远端文件到本地
+        - ssh_list_directory: 查看远端目录结构
+        - ssh_read_file: 读取远端文本文件片段
+        - ssh_write_file: 写入远端文本文件
+        - ssh_make_directory: 创建远端目录
+        - ssh_remove_path: 删除远端文件或目录
+        - ssh_path_exists: 检查远端路径是否存在
+        - fetch_web_page: 抓取网页正文与标题
+        - search_web: 执行公开网页搜索
         - list_knowledge_documents: 查看远程文档库中的文档名称
         - read_knowledge_document: 读取远程文档库文档内容
 
