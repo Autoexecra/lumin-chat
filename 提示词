@@ -130,3 +130,31 @@ ok3568 ~/lumin-chat #
 另外，还要给工具添加一个功能，是ssh远程执行命令的功能。这个功能需要提供远程主机的IP地址、端口号、用户名、密码以及要执行的命令。执行结果需要返回给用户。请帮我实现这个功能，并且在测试板子上进行测试，确保功能正常。
 我可以指定一台编译服务器用来编译代码，编译完成后再将编译好的代码部署到测试板子上进行测试。请帮我实现这个流程，并且在测试板子上进行测试，确保流程顺畅，功能正常。
 完善代码，测试完，删除不需要的文件，保持代码整洁。然后提交git
+
+
+1, 会话时候时候，要完美支持中文，不乱码。并且要支持backspace ，delete 键的正常使用。方向键的正常使用。
+2，我希望支持更加多的工具，起码多十个常用的工具。但是工具不能是一两条Linux指令就可以实现的。是要Linux比较难实现的才使用工具实现。不然就直接调用指令好了。
+比如ssh远程主机下指令，web访问和搜索。
+3，我希望生成一个脚本，可以对源码一键打包成rpm包。然后拷贝到目标主机直接安装就可以执行。
+将config.json放到etc目录下，路径是/etc/lumin-chat/config.json。生成一个一键启动shell脚本放到/usr/bin/lumin-chat，源码放到/var/lib/lumin-chat。
+配置文件要优先使用/etc/lumin-chat/config.json目录下的。
+帮我测试上面的需求，保证没问题。并且放到tl3588 板子上去测试，
+使用脚本将代码放到tl3588 的方法：python3 deploy.py --host tl3588 --port 22
+
+ssh远程的方法是：
+yanggan@user-Z790-S-DDR4:~/lumin-chat$ ssh tl3588 ls
+Warning: Permanently added '192.168.0.11' (ED25519) to the list of known hosts.
+QSemOS(QSemOS Reference Distro) V1.0.2602 %h
+
+   ____    _____                      ____    _____
+  / __ \  / ___/  ___    ____ ___    / __ \  / ___/
+ / / / /  \__ \  / _ \  / __ `__ \  / / / /  \__ \ 
+/ /_/ /  ___/ / /  __/ / / / / / / / /_/ /  ___/ / 
+\___\_\ /____/  \___/ /_/ /_/ /_/  \____/  /____/  
+
+
+Authorized uses only. All activity may be monitored and reported.
+
+Desktop
+lumin-chat
+yanggan@user-Z790-S-DDR4:~/lumin-chat$ 
