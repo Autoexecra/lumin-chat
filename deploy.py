@@ -10,6 +10,7 @@ import re
 import shutil
 import subprocess
 import tarfile
+import time
 from pathlib import Path
 from typing import Dict, List
 
@@ -30,10 +31,10 @@ def stage_project(project_root: Path, stage_root: Path) -> None:
         shutil.rmtree(stage_root)
     stage_root.mkdir(parents=True, exist_ok=True)
 
-    for file_name in ["main.py", "config.json", "requirements.txt", "deploy.py"]:
+    for file_name in ["main.py", "config.json", "requirements.txt", "deploy.py", "README.md"]:
         shutil.copy2(project_root / file_name, stage_root / file_name)
 
-    for folder_name in ["docs", "reports", "scripts", "src"]:
+    for folder_name in ["docs", "scripts", "src"]:
         source_dir = project_root / folder_name
         if not source_dir.exists():
             continue
@@ -164,6 +165,41 @@ def run_ssh_cli(
         timeout=timeout_seconds,
         check=False,
     )
+
+
+def run_ssh_cli_with_retry(
+    connection: SSHConnectionConfig,
+    command: str,
+    cwd: str | None = None,
+    timeout_seconds: int = 60,
+    attempts: int = 4,
+) -> subprocess.CompletedProcess[str]:
+    """执行远端命令，并对偶发 SSH 传输错误进行重试。"""
+
+    last_result: subprocess.CompletedProcess[str] | None = None
+    for attempt in range(1, max(1, attempts) + 1):
+        last_result = run_ssh_cli(connection, command, cwd=cwd, timeout_seconds=timeout_seconds)
+        stderr = (last_result.stderr or "") + "\n" + (last_result.stdout or "")
+        if last_result.returncode == 0:
+            return last_result
+        if not _looks_like_transient_ssh_error(stderr):
+            return last_result
+        if attempt < attempts:
+            time.sleep(min(attempt, 3))
+    return last_result if last_result is not None else run_ssh_cli(connection, command, cwd=cwd, timeout_seconds=timeout_seconds)
+
+
+def _looks_like_transient_ssh_error(output: str) -> bool:
+    """判断是否为可重试的 SSH 传输层异常。"""
+
+    markers = (
+        "Bad packet length",
+        "Connection corrupted",
+        "Connection closed by UNKNOWN port 65535",
+        "Connection reset by peer",
+        "Broken pipe",
+    )
+    return any(marker in output for marker in markers)
 
 
 def upload_file_cli(connection: SSHConnectionConfig, local_path: Path, remote_path: str) -> None:
@@ -442,7 +478,7 @@ def run_remote_validation(target_config: Dict[str, object], report_path: Path) -
     )
     if not str(target_config["password"]):
         for test_case in build_test_cases(APP_INSTALL_DIR, LAUNCHER_PATH, SYSTEM_CONFIG_PATH):
-            completed = run_ssh_cli(connection, test_case["command"], timeout_seconds=600)
+            completed = run_ssh_cli_with_retry(connection, test_case["command"], timeout_seconds=600)
             results.append(
                 {
                     "name": test_case["name"],

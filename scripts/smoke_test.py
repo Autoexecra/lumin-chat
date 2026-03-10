@@ -12,8 +12,11 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.config_loader import load_config
 from src.document_library import KnowledgeBaseClient
+from src.memory_store import MemoryStore
+from src.agent import LuminChatAgent
 from src.models import ToolCall
 from src.toolkit import ToolExecutor
+from src.ui import TerminalUI
 
 
 TEST_CONFIG = {
@@ -69,6 +72,32 @@ def main() -> int:
     )
     require(malformed_raw.ok, f"malformed raw write parse failed: {malformed_raw.output}")
     Path("/tmp/lumin-chat-malformed.txt").unlink(missing_ok=True)
+
+    with tempfile.TemporaryDirectory(prefix="lumin-chat-memory-") as memory_dir:
+        memory_store = MemoryStore(memory_dir)
+        session_id = "smoke-session"
+        memory_store.ensure_session(session_id, "2026-03-10T00:00:00Z")
+        memory_store.record_turn(session_id, "记住默认测试板是 tl3588，部署优先用 rpm", "已记录部署偏好")
+        memory_store.record_turn(session_id, "本次需要测试长期记忆召回", "长期记忆已建立")
+        memory_state = memory_store.describe(session_id)
+        require(memory_state["memory_count"] >= 2, f"memory count mismatch: {memory_state}")
+        notes = memory_store.get_notes(session_id)
+        require(any("tl3588" in item for item in notes), f"memory notes missing tl3588: {notes}")
+        recalled = memory_store.build_context(session_id, "部署到 tl3588 时使用什么方式", limit=3, max_chars=600)
+        require("tl3588" in recalled and "rpm" in recalled, f"memory recall mismatch: {recalled}")
+
+    agent = LuminChatAgent(
+        config=runtime_config,
+        ui=TerminalUI(show_thinking=False),
+        model_level=1,
+        approval_policy="auto",
+        workdir=os.getcwd(),
+    )
+    agent.memory_store.record_turn(agent.session.session_id, "记住当前会话优先部署到 tl3588", "已记录")
+    agent_memory = agent.memory_summary("tl3588 部署")
+    require("tl3588" in agent_memory, f"agent memory summary mismatch: {agent_memory}")
+    memory_state = agent.memory_state()
+    require(memory_state["memory_count"] >= 1, f"agent memory state mismatch: {memory_state}")
 
     pwd_result = executor.run_shell_command("pwd" if os.name != "nt" else "Get-Location | Select-Object -ExpandProperty Path")
     require(pwd_result.ok, f"pwd failed: {pwd_result.output}")

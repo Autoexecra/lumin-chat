@@ -7,6 +7,7 @@ __all__ = [
     "config_loader",
     "document_library",
     "models",
+    "memory_store",
     "prompts",
     "session_store",
     "toolkit",

@@ -45,6 +45,7 @@ def build_system_prompt(config: dict, model_level: int, max_model_level: int) ->
         - 当命令执行失败时，先根据错误做下一步诊断，而不是立即放弃。
         - 默认面向 bash/Linux 环境生成命令，除非环境信息显示不是 Linux。
         - 给用户的最终文本应简洁、可执行、少废话。
+        - 系统可能会在额外的 system 消息中注入“长期记忆”，其中包含该会话过去沉淀的偏好、约束和历史结论；只有在与当前任务相关时才引用，不要生搬硬套。
         - 生成 shell 命令时必须遵守当前命令策略，避免产出危险指令。
         - 如果连续失败或重复生成同一条失败命令，系统可能自动升级到更高 level，你需要在升级后调整策略而不是重复原方案。
         - 禁止使用交互式的指令，比如 vim、nano、less、more 等。dnf install 必须加上 -y 参数。docker指令使用docker exec my_container sh -c '指令' 而不是 docker exec -it进入容器内。并且输出不能分页。

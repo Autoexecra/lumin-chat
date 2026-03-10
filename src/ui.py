@@ -29,7 +29,7 @@ class TerminalUI:
             f"approval={approval_policy}\n"
             f"command_policy={command_policy_mode}\n"
             f"session={session_path}\n"
-            "slash commands: /help /model /approval /policy /cd /cwd /session /shell /restart-shell /reset /exit"
+            "slash commands: /help /model /approval /policy /cd /cwd /session /shell /memory /restart-shell /reset /exit"
         )
         self.console.print(Panel(text, title="lumin-chat", border_style="cyan"))
 

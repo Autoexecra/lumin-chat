@@ -23,10 +23,10 @@ def copy_project_files(project_root: Path, stage_root: Path) -> None:
         shutil.rmtree(stage_root)
     stage_root.mkdir(parents=True, exist_ok=True)
 
-    for file_name in ["main.py", "config.json", "requirements.txt", "deploy.py"]:
+    for file_name in ["main.py", "config.json", "requirements.txt", "deploy.py", "README.md"]:
         shutil.copy2(project_root / file_name, stage_root / file_name)
 
-    for folder_name in ["src", "docs", "scripts", "reports"]:
+    for folder_name in ["src", "docs", "scripts"]:
         source_dir = project_root / folder_name
         if not source_dir.exists():
             continue

@@ -16,7 +16,10 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "default_approval_policy": "auto",
         "max_tool_rounds": 8,
         "show_thinking": True,
-        "session_dir": ".lumin-chat/sessions",
+        "session_dir": "~/.lumin-chat/sessions",
+        "memory_dir": "~/.lumin-chat/memory",
+        "memory_recall_limit": 5,
+        "memory_max_chars": 1600,
     },
     "command_policy": {
         "mode": "blacklist",

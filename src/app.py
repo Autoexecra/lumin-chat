@@ -147,7 +147,7 @@ def _handle_slash_command(raw: str, agent: LuminChatAgent, ui: TerminalUI) -> bo
         return False
     if command == "/help":
         ui.show_info(
-            "/help /exit /reset /model <n> /approval <prompt|auto|read-only> /policy <blacklist|whitelist> /cd <path> /cwd /session /shell /restart-shell"
+            "/help /exit /reset /model <n> /approval <prompt|auto|read-only> /policy <blacklist|whitelist> /cd <path> /cwd /session /shell /memory [query] /restart-shell"
         )
         return True
     if command == "/reset":
@@ -189,6 +189,9 @@ def _handle_slash_command(raw: str, agent: LuminChatAgent, ui: TerminalUI) -> bo
         return True
     if command == "/shell":
         ui.show_info(json.dumps(agent.shell_state(), ensure_ascii=False, indent=2))
+        return True
+    if command == "/memory":
+        ui.show_info(agent.memory_summary(argument))
         return True
     if command == "/restart-shell":
         agent.restart_shell()

@@ -7,6 +7,7 @@ from typing import Optional
 
 from src.ai_client import AIClient
 from src.config_loader import get_max_model_level, get_model_config
+from src.memory_store import MemoryStore
 from src.models import LLMResponse
 from src.prompts import build_system_prompt
 from src.session_store import SessionStore
@@ -40,8 +41,13 @@ class LuminChatAgent:
         self.repeated_tool_count = 0
         self.consecutive_tool_failures = 0
         base_dir = Path(workdir or os.getcwd()).resolve()
-        session_dir = base_dir / config.get("app", {}).get("session_dir", ".lumin-chat/sessions")
+        app_config = config.get("app", {})
+        session_dir = self._resolve_state_dir(base_dir, app_config.get("session_dir", "~/.lumin-chat/sessions"))
+        memory_dir = self._resolve_state_dir(base_dir, app_config.get("memory_dir", "~/.lumin-chat/memory"))
         self.session_store = SessionStore(str(session_dir))
+        self.memory_store = MemoryStore(str(memory_dir))
+        self.memory_recall_limit = int(app_config.get("memory_recall_limit", 5))
+        self.memory_max_chars = int(app_config.get("memory_max_chars", 1600))
         self.system_prompt = build_system_prompt(config, self.model_level, self.max_model_level)
 
         if session_id_or_path:
@@ -56,6 +62,7 @@ class LuminChatAgent:
                 cwd=str(base_dir),
                 system_prompt=self.system_prompt,
             )
+        self.memory_store.ensure_session(self.session.session_id, self.session.created_at)
 
         self.ai = AIClient(config=config, model_level=self.model_level)
         self.executor = ToolExecutor(
@@ -117,6 +124,7 @@ class LuminChatAgent:
             cwd=cwd,
             system_prompt=self.system_prompt,
         )
+        self.memory_store.ensure_session(self.session.session_id, self.session.created_at)
 
     def change_directory(self, path: str) -> str:
         """切换工作目录并保存状态。"""
@@ -143,16 +151,38 @@ class LuminChatAgent:
 
         return self.executor.command_policy_state()
 
+    def memory_state(self) -> dict:
+        """返回当前会话的长期记忆概况。"""
+
+        return self.memory_store.describe(self.session.session_id)
+
+    def memory_summary(self, query: str = "") -> str:
+        """返回当前会话的长期记忆摘要文本。"""
+
+        text = self.memory_store.build_context(
+            session_id=self.session.session_id,
+            query_text=query or "最近的长期记忆",
+            limit=self.memory_recall_limit,
+            max_chars=self.memory_max_chars,
+        )
+        return text or "当前会话还没有沉淀长期记忆。"
+
     def run(self, user_input: str) -> str:
         """执行一次用户请求，必要时走多轮工具调用。"""
 
         self.session.messages.append({"role": "user", "content": user_input})
         final_content = ""
         used_tools = False
+        recalled_memory = self.memory_store.build_context(
+            session_id=self.session.session_id,
+            query_text=user_input,
+            limit=self.memory_recall_limit,
+            max_chars=self.memory_max_chars,
+        )
 
         for _ in range(self.max_tool_rounds):
             response = self.ai.call(
-                messages=self.session.messages,
+                messages=self._build_messages_for_model(recalled_memory),
                 tools=self.executor.definitions(),
                 stream=True,
                 on_reasoning=self.ui.stream_reasoning,
@@ -177,6 +207,7 @@ class LuminChatAgent:
                 if used_tools and not (response.content or "").strip():
                     final_content = self._request_final_summary() or final_content
                 self.session.cwd = self.executor.cwd
+                self._remember_turn(user_input, final_content)
                 self._save_session()
                 return final_content
 
@@ -212,6 +243,7 @@ class LuminChatAgent:
 
         self.ui.show_warning("达到最大工具调用轮次，已停止本次请求。")
         self.session.cwd = self.executor.cwd
+        self._remember_turn(user_input, final_content)
         self._save_session()
         return final_content
 
@@ -237,7 +269,7 @@ class LuminChatAgent:
         """在工具阶段结束后请求模型给出最终总结。"""
 
         prompt = "你已经拿到全部工具结果。现在直接基于这些结果给用户最终答复，不要再调用工具。"
-        messages = self.session.messages + [{"role": "system", "content": prompt}]
+        messages = self._build_messages_for_model("") + [{"role": "system", "content": prompt}]
         response = self.ai.call(
             messages=messages,
             tools=None,
@@ -305,6 +337,29 @@ class LuminChatAgent:
         """生成工具调用签名，用于重复检测。"""
 
         return f"{name}:{json.dumps(arguments, ensure_ascii=False, sort_keys=True)}"
+
+    @staticmethod
+    def _resolve_state_dir(base_dir: Path, configured_path: str) -> Path:
+        """解析会话和长期记忆等状态目录。"""
+
+        expanded = Path(configured_path).expanduser()
+        if expanded.is_absolute():
+            return expanded
+        return (base_dir / expanded).resolve()
+
+    def _build_messages_for_model(self, recalled_memory: str) -> list[dict]:
+        """构造发给模型的消息列表，并在需要时注入长期记忆。"""
+
+        if not recalled_memory:
+            return list(self.session.messages)
+        return list(self.session.messages) + [{"role": "system", "content": recalled_memory}]
+
+    def _remember_turn(self, user_input: str, final_content: str) -> None:
+        """把本轮输入输出沉淀到会话长期记忆。"""
+
+        if not (user_input or final_content):
+            return
+        self.memory_store.record_turn(self.session.session_id, user_input, final_content)
 
     def _save_session(self) -> None:
         """保存当前会话。"""
