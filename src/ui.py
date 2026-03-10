@@ -19,6 +19,8 @@ class TerminalUI:
         self.console = Console()
         self.show_thinking = show_thinking
         self._stream_mode = None
+        self._suppress_think_tag = False
+        self._content_visible_started = False
 
     def show_banner(self, model_name: str, cwd: str, approval_policy: str, command_policy_mode: str, session_path: str) -> None:
         """显示启动横幅。"""
@@ -29,7 +31,7 @@ class TerminalUI:
             f"approval={approval_policy}\n"
             f"command_policy={command_policy_mode}\n"
             f"session={session_path}\n"
-            "slash commands: /help /model /approval /policy /cd /cwd /session /shell /memory /restart-shell /reset /exit"
+            "slash commands: /help /new-session /sessions /switch-session /model /approval /policy /cd /cwd /session /shell /memory /restart-shell /reset /exit"
         )
         self.console.print(Panel(text, title="lumin-chat", border_style="cyan"))
 
@@ -46,10 +48,16 @@ class TerminalUI:
     def stream_content(self, text: str) -> None:
         """输出回答正文流。"""
 
+        if not self.show_thinking:
+            text = self._strip_hidden_thinking(text)
+            if not text:
+                return
+
         if self._stream_mode != "content":
             self.console.print("\nassistant> ", style="bold cyan", end="")
             self._stream_mode = "content"
         self.console.print(text, end="", markup=False, highlight=False)
+        self._content_visible_started = True
 
     def end_stream(self) -> None:
         """结束一次流式输出。"""
@@ -57,6 +65,8 @@ class TerminalUI:
         if self._stream_mode is not None:
             self.console.print()
         self._stream_mode = None
+        self._suppress_think_tag = False
+        self._content_visible_started = False
 
     def show_tool_call(self, name: str, arguments: Dict[str, Any]) -> None:
         """展示工具调用参数。"""
@@ -90,3 +100,35 @@ class TerminalUI:
 
         prompt = f"{title}: {details}\n允许执行?"
         return Confirm.ask(prompt, default=False)
+
+    def _strip_hidden_thinking(self, text: str) -> str:
+        """在隐藏 thinking 时过滤 <think>...</think> 内容。"""
+
+        remaining = text
+        output_parts = []
+        while remaining:
+            if self._suppress_think_tag:
+                end_index = remaining.find("</think>")
+                if end_index == -1:
+                    return ""
+                remaining = remaining[end_index + len("</think>") :]
+                self._suppress_think_tag = False
+                continue
+
+            if not self._content_visible_started and "</think>" in remaining and "<think>" not in remaining:
+                remaining = remaining.split("</think>", 1)[1]
+                continue
+
+            start_index = remaining.find("<think>")
+            if start_index == -1:
+                output_parts.append(remaining)
+                break
+            if start_index > 0:
+                output_parts.append(remaining[:start_index])
+            remaining = remaining[start_index + len("<think>") :]
+            end_index = remaining.find("</think>")
+            if end_index == -1:
+                self._suppress_think_tag = True
+                break
+            remaining = remaining[end_index + len("</think>") :]
+        return "".join(output_parts)

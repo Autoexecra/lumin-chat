@@ -140,10 +140,27 @@ class MemoryStore:
             ).fetchall()
         return [str(row[0]) for row in rows]
 
+    def relevant_notes(self, session_id: str, query_text: str, limit: int = 6) -> List[str]:
+        """只返回与当前查询相关的稳定偏好与事实。"""
+
+        query_tokens = set(self._tokenize(query_text))
+        ranked: List[tuple[float, str]] = []
+        for note in self.get_notes(session_id, limit=50):
+            note_tokens = set(self._tokenize(note))
+            overlap = len(query_tokens.intersection(note_tokens))
+            score = float(overlap)
+            if any(keyword in note for keyword in ("中文", "黑名单", "白名单", "审批模式")):
+                score += 0.5
+            if score <= 0:
+                continue
+            ranked.append((score, note))
+        ranked.sort(key=lambda item: item[0], reverse=True)
+        return [item[1] for item in ranked[: max(1, min(int(limit), 20))]]
+
     def build_context(self, session_id: str, query_text: str, limit: int = 5, max_chars: int = 1600) -> str:
         """把长期记忆整理成可注入模型的上下文。"""
 
-        notes = self.get_notes(session_id, limit=6)
+        notes = self.relevant_notes(session_id, query_text, limit=6)
         memories = self.query(session_id, query_text, limit=limit)
         if not notes and not memories:
             return ""
@@ -289,8 +306,7 @@ class MemoryStore:
                 SELECT id, title, summary, created_at, content, keywords, importance
                 FROM memory_items
                 WHERE session_id=?
-                ORDER BY created_at DESC
-                LIMIT 200
+                ORDER BY importance DESC, created_at DESC
                 """,
                 (session_id,),
             ).fetchall()

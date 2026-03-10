@@ -75,10 +75,12 @@ class AIClient:
 
             response = self.client.chat.completions.create(**params)
             message = response.choices[0].message
+            raw_content = message.content or ""
+            extra_reasoning, clean_content = self._split_thinking_from_content(raw_content)
             result = LLMResponse(
                 success=True,
-                content=message.content or "",
-                reasoning_content=getattr(message, "reasoning_content", None) or "",
+                content=clean_content,
+                reasoning_content=(getattr(message, "reasoning_content", None) or "") + extra_reasoning,
                 tool_calls=self._parse_tool_calls(getattr(message, "tool_calls", None) or []),
                 finish_reason=response.choices[0].finish_reason or "stop",
                 usage={
@@ -146,10 +148,11 @@ class AIClient:
                         if tool_call.function.arguments:
                             tool_calls_map[index]["arguments"] += tool_call.function.arguments
 
+            extra_reasoning, clean_content = self._split_thinking_from_content("".join(content_parts))
             return LLMResponse(
                 success=True,
-                content="".join(content_parts),
-                reasoning_content="".join(reasoning_parts),
+                content=clean_content,
+                reasoning_content="".join(reasoning_parts) + extra_reasoning,
                 tool_calls=self._parse_stream_tool_calls(tool_calls_map),
                 finish_reason=finish_reason,
             )
@@ -212,3 +215,34 @@ class AIClient:
             return {"value": value}
         except json.JSONDecodeError:
             return {"raw": payload}
+
+    @staticmethod
+    def _split_thinking_from_content(content: str) -> tuple[str, str]:
+        """从正文中剥离 <think> 标签包裹的推理内容。"""
+
+        if not content:
+            return "", content
+        if "<think>" not in content and "</think>" in content:
+            reasoning, clean = content.split("</think>", 1)
+            return reasoning, clean.strip()
+        if "<think>" not in content:
+            return "", content
+
+        reasoning_parts: List[str] = []
+        clean_parts: List[str] = []
+        remaining = content
+        while remaining:
+            start_index = remaining.find("<think>")
+            if start_index == -1:
+                clean_parts.append(remaining)
+                break
+            if start_index > 0:
+                clean_parts.append(remaining[:start_index])
+            remaining = remaining[start_index + len("<think>") :]
+            end_index = remaining.find("</think>")
+            if end_index == -1:
+                reasoning_parts.append(remaining)
+                break
+            reasoning_parts.append(remaining[:end_index])
+            remaining = remaining[end_index + len("</think>") :]
+        return "".join(reasoning_parts), "".join(clean_parts).strip()

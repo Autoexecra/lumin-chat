@@ -126,6 +126,32 @@ class LuminChatAgent:
         )
         self.memory_store.ensure_session(self.session.session_id, self.session.created_at)
 
+    def create_new_session(self) -> str:
+        """新建会话，并切换到新的长期记忆空间。"""
+
+        self.reset_session()
+        self._save_session()
+        return self.session.session_id
+
+    def list_sessions(self, limit: int = 20) -> list[dict]:
+        """列出可切换的历史会话。"""
+
+        return self.session_store.list_sessions(limit=limit)
+
+    def switch_session(self, session_id_or_path: str) -> str:
+        """切换到指定会话，并加载其长期记忆。"""
+
+        session = self.session_store.load(session_id_or_path)
+        self.session = session
+        self.model_level = session.model_level
+        self.ai = AIClient(config=self.config, model_level=self.model_level)
+        self.executor.set_approval_policy(session.approval_policy)
+        self.executor.change_directory(session.cwd)
+        self._refresh_system_prompt()
+        self.memory_store.ensure_session(self.session.session_id, self.session.created_at)
+        self._save_session()
+        return self.session.session_id
+
     def change_directory(self, path: str) -> str:
         """切换工作目录并保存状态。"""
 
@@ -181,13 +207,16 @@ class LuminChatAgent:
         )
 
         for _ in range(self.max_tool_rounds):
+            stream_response = bool(self.ui.show_thinking)
             response = self.ai.call(
                 messages=self._build_messages_for_model(recalled_memory),
                 tools=self.executor.definitions(),
-                stream=True,
+                stream=stream_response,
                 on_reasoning=self.ui.stream_reasoning,
                 on_content=self.ui.stream_content,
             )
+            if not stream_response and response.content:
+                self.ui.stream_content(response.content)
             self.ui.end_stream()
 
             if not response.success:
@@ -273,10 +302,12 @@ class LuminChatAgent:
         response = self.ai.call(
             messages=messages,
             tools=None,
-            stream=True,
+            stream=bool(self.ui.show_thinking),
             on_reasoning=self.ui.stream_reasoning,
             on_content=self.ui.stream_content,
         )
+        if not self.ui.show_thinking and response.content:
+            self.ui.stream_content(response.content)
         self.ui.end_stream()
 
         if not response.success:

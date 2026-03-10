@@ -189,6 +189,28 @@ def run_ssh_cli_with_retry(
     return last_result if last_result is not None else run_ssh_cli(connection, command, cwd=cwd, timeout_seconds=timeout_seconds)
 
 
+def run_ssh_cli_checked(
+    connection: SSHConnectionConfig,
+    command: str,
+    cwd: str | None = None,
+    timeout_seconds: int = 60,
+    attempts: int = 4,
+    error_message: str = "远端命令执行失败",
+) -> subprocess.CompletedProcess[str]:
+    """执行带重试的远端命令，并在失败时抛出明确异常。"""
+
+    completed = run_ssh_cli_with_retry(
+        connection,
+        command,
+        cwd=cwd,
+        timeout_seconds=timeout_seconds,
+        attempts=attempts,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(f"{error_message}: {completed.stderr or completed.stdout}")
+    return completed
+
+
 def _looks_like_transient_ssh_error(output: str) -> bool:
     """判断是否为可重试的 SSH 传输层异常。"""
 
@@ -205,38 +227,51 @@ def _looks_like_transient_ssh_error(output: str) -> bool:
 def upload_file_cli(connection: SSHConnectionConfig, local_path: Path, remote_path: str) -> None:
     """使用系统 scp 上传单个文件。"""
 
-    subprocess.run(
-        [
-            "scp",
-            "-O",
-            "-o",
-            "StrictHostKeyChecking=no",
-            "-P",
-            str(connection.port),
-            str(local_path),
-            f"{_ssh_target(connection)}:{remote_path}",
-        ],
-        check=True,
-    )
+    command = [
+        "scp",
+        "-O",
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-P",
+        str(connection.port),
+        str(local_path),
+        f"{_ssh_target(connection)}:{remote_path}",
+    ]
+    _run_scp_with_retry(command)
 
 
 def download_file_cli(connection: SSHConnectionConfig, remote_path: str, local_path: Path) -> None:
     """使用系统 scp 下载单个文件。"""
 
     local_path.parent.mkdir(parents=True, exist_ok=True)
-    subprocess.run(
-        [
-            "scp",
-            "-O",
-            "-o",
-            "StrictHostKeyChecking=no",
-            "-P",
-            str(connection.port),
-            f"{_ssh_target(connection)}:{remote_path}",
-            str(local_path),
-        ],
-        check=True,
-    )
+    command = [
+        "scp",
+        "-O",
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-P",
+        str(connection.port),
+        f"{_ssh_target(connection)}:{remote_path}",
+        str(local_path),
+    ]
+    _run_scp_with_retry(command)
+
+
+def _run_scp_with_retry(command: list[str], attempts: int = 4) -> None:
+    """执行 scp 并对传输层抖动进行重试。"""
+
+    last_error: subprocess.CalledProcessError | None = None
+    for attempt in range(1, max(1, attempts) + 1):
+        try:
+            subprocess.run(command, check=True)
+            return
+        except subprocess.CalledProcessError as exc:
+            last_error = exc
+            if attempt >= attempts:
+                break
+            time.sleep(min(attempt, 3))
+    if last_error is not None:
+        raise last_error
 
 
 def build_archive_on_server(stage_root: Path, build_config: Dict[str, object], local_archive: Path) -> None:
@@ -256,7 +291,12 @@ def build_archive_on_server(stage_root: Path, build_config: Dict[str, object], l
 
     if not str(build_config["password"]):
         remote_source_archive = posixpath.join(remote_dir, "build-source.tar.gz")
-        run_ssh_cli(connection, f"rm -rf {shlex_quote(remote_dir)} && mkdir -p {shlex_quote(source_dir)}")
+        run_ssh_cli_checked(
+            connection,
+            f"rm -rf {shlex_quote(remote_dir)} && mkdir -p {shlex_quote(source_dir)}",
+            timeout_seconds=300,
+            error_message="远端构建目录准备失败",
+        )
         upload_file_cli(connection, source_archive, remote_source_archive)
         commands = [
             f"tar -xzf {shlex_quote(remote_source_archive)} -C {shlex_quote(source_dir)}",
@@ -264,9 +304,13 @@ def build_archive_on_server(stage_root: Path, build_config: Dict[str, object], l
             f"tar -czf {shlex_quote(artifact_path)} -C {shlex_quote(source_dir)} .",
         ]
         for command in commands:
-            completed = run_ssh_cli(connection, command, cwd=source_dir, timeout_seconds=300)
-            if completed.returncode != 0:
-                raise RuntimeError(completed.stderr or completed.stdout)
+            run_ssh_cli_checked(
+                connection,
+                command,
+                cwd=source_dir,
+                timeout_seconds=300,
+                error_message="远端源码包构建失败",
+            )
         download_file_cli(connection, artifact_path, local_archive)
         return
 
@@ -324,7 +368,12 @@ def build_rpm_on_server(stage_root: Path, build_config: Dict[str, object], outpu
 
     remote_source_archive = posixpath.join(remote_dir, "build-source.tar.gz")
     if not str(build_config["password"]):
-        run_ssh_cli(connection, f"rm -rf {shlex_quote(remote_dir)} && mkdir -p {shlex_quote(source_dir)} {shlex_quote(remote_output_dir)}")
+        run_ssh_cli_checked(
+            connection,
+            f"rm -rf {shlex_quote(remote_dir)} && mkdir -p {shlex_quote(source_dir)} {shlex_quote(remote_output_dir)}",
+            timeout_seconds=300,
+            error_message="远端 RPM 构建目录准备失败",
+        )
         upload_file_cli(connection, source_archive, remote_source_archive)
         commands = [
             f"tar -xzf {shlex_quote(remote_source_archive)} -C {shlex_quote(source_dir)}",
@@ -332,12 +381,19 @@ def build_rpm_on_server(stage_root: Path, build_config: Dict[str, object], outpu
             f"python3 scripts/build_rpm.py --output-dir {shlex_quote(remote_output_dir)} --work-dir {shlex_quote(posixpath.join(remote_dir, 'rpmbuild'))}",
         ]
         for command in commands:
-            completed = run_ssh_cli(connection, command, cwd=source_dir, timeout_seconds=600)
-            if completed.returncode != 0:
-                raise RuntimeError(completed.stderr or completed.stdout)
-        query = run_ssh_cli(connection, f"ls -1 {shlex_quote(remote_output_dir)}/*.rpm | tail -n 1", timeout_seconds=120)
-        if query.returncode != 0:
-            raise RuntimeError(query.stderr or query.stdout)
+            run_ssh_cli_checked(
+                connection,
+                command,
+                cwd=source_dir,
+                timeout_seconds=600,
+                error_message="远端 RPM 构建失败",
+            )
+        query = run_ssh_cli_checked(
+            connection,
+            f"ls -1 {shlex_quote(remote_output_dir)}/*.rpm | tail -n 1",
+            timeout_seconds=120,
+            error_message="未找到远端 RPM 包",
+        )
         rpm_path = query.stdout.strip().splitlines()[-1]
         local_rpm = output_dir / Path(rpm_path).name
         download_file_cli(connection, rpm_path, local_rpm)
@@ -377,9 +433,14 @@ def deploy_archive_to_target(archive_path: Path, target_config: Dict[str, object
         password=str(target_config["password"]),
     )
     if not str(target_config["password"]):
-        run_ssh_cli(connection, f"mkdir -p {shlex_quote(remote_dir)}")
+        run_ssh_cli_checked(
+            connection,
+            f"mkdir -p {shlex_quote(remote_dir)}",
+            timeout_seconds=120,
+            error_message="测试板部署目录准备失败",
+        )
         upload_file_cli(connection, archive_path, remote_archive)
-        unpack_result = run_ssh_cli(
+        unpack_result = run_ssh_cli_with_retry(
             connection,
             (
                 f"find {shlex_quote(remote_dir)} -mindepth 1 -maxdepth 1 ! -name 'lumin-chat.tar.gz' -exec rm -rf {{}} + && "
@@ -390,7 +451,7 @@ def deploy_archive_to_target(archive_path: Path, target_config: Dict[str, object
         if unpack_result.returncode != 0:
             raise RuntimeError(f"测试板解压失败: {unpack_result.stderr or unpack_result.stdout}")
         if bootstrap:
-            bootstrap_result = run_ssh_cli(
+            bootstrap_result = run_ssh_cli_with_retry(
                 connection,
                 f"bash scripts/remote_bootstrap.sh {shlex_quote(remote_dir)}",
                 cwd=remote_dir,
@@ -436,9 +497,14 @@ def install_rpm_to_target(rpm_path: Path, target_config: Dict[str, object]) -> N
     install_command = f"mkdir -p {shlex_quote(remote_dir)} && rpm -Uvh --replacepkgs --force {shlex_quote(remote_rpm)}"
 
     if not str(target_config["password"]):
-        run_ssh_cli(connection, f"mkdir -p {shlex_quote(remote_dir)}")
+        run_ssh_cli_checked(
+            connection,
+            f"mkdir -p {shlex_quote(remote_dir)}",
+            timeout_seconds=120,
+            error_message="测试板 RPM 目录准备失败",
+        )
         upload_file_cli(connection, rpm_path, remote_rpm)
-        completed = run_ssh_cli(connection, install_command, timeout_seconds=1800)
+        completed = run_ssh_cli_with_retry(connection, install_command, timeout_seconds=1800)
         if completed.returncode != 0:
             if _rpm_install_verified(connection):
                 return
@@ -460,7 +526,7 @@ def _rpm_install_verified(connection: SSHConnectionConfig) -> bool:
     """在 SSH CLI 场景下回查 RPM 是否已安装成功。"""
 
     try:
-        check = run_ssh_cli(connection, "rpm -q lumin-chat", timeout_seconds=120)
+        check = run_ssh_cli_with_retry(connection, "rpm -q lumin-chat", timeout_seconds=120)
     except Exception:
         return False
     return check.returncode == 0

@@ -642,47 +642,50 @@ class ToolExecutor:
 
         name = tool_call.name
         arguments = self._normalize_tool_arguments(name, tool_call.arguments)
-        if name == "run_shell_command":
-            return self.run_shell_command(**arguments)
-        if name == "change_directory":
-            return self.change_directory(**arguments)
-        if name == "list_directory":
-            return self.list_directory(**arguments)
-        if name == "search_text":
-            return self.search_text(**arguments)
-        if name == "read_file":
-            return self.read_file(**arguments)
-        if name == "write_file":
-            return self.write_file(**arguments)
-        if name == "get_environment":
-            return self.get_environment()
-        if name == "ssh_execute_command":
-            return self.ssh_execute_command(**arguments)
-        if name == "ssh_upload_file":
-            return self.ssh_upload_file(**arguments)
-        if name == "ssh_download_file":
-            return self.ssh_download_file(**arguments)
-        if name == "ssh_list_directory":
-            return self.ssh_list_directory(**arguments)
-        if name == "ssh_read_file":
-            return self.ssh_read_file(**arguments)
-        if name == "ssh_write_file":
-            return self.ssh_write_file(**arguments)
-        if name == "ssh_make_directory":
-            return self.ssh_make_directory(**arguments)
-        if name == "ssh_remove_path":
-            return self.ssh_remove_path(**arguments)
-        if name == "ssh_path_exists":
-            return self.ssh_path_exists(**arguments)
-        if name == "fetch_web_page":
-            return self.fetch_web_page(**arguments)
-        if name == "search_web":
-            return self.search_web(**arguments)
-        if name == "list_knowledge_documents":
-            return self.list_knowledge_documents(**arguments)
-        if name == "read_knowledge_document":
-            return self.read_knowledge_document(**arguments)
-        return ToolExecutionResult(name=name, ok=False, output=f"Unknown tool: {name}")
+        try:
+            if name == "run_shell_command":
+                return self.run_shell_command(**arguments)
+            if name == "change_directory":
+                return self.change_directory(**arguments)
+            if name == "list_directory":
+                return self.list_directory(**arguments)
+            if name == "search_text":
+                return self.search_text(**arguments)
+            if name == "read_file":
+                return self.read_file(**arguments)
+            if name == "write_file":
+                return self.write_file(**arguments)
+            if name == "get_environment":
+                return self.get_environment()
+            if name == "ssh_execute_command":
+                return self.ssh_execute_command(**arguments)
+            if name == "ssh_upload_file":
+                return self.ssh_upload_file(**arguments)
+            if name == "ssh_download_file":
+                return self.ssh_download_file(**arguments)
+            if name == "ssh_list_directory":
+                return self.ssh_list_directory(**arguments)
+            if name == "ssh_read_file":
+                return self.ssh_read_file(**arguments)
+            if name == "ssh_write_file":
+                return self.ssh_write_file(**arguments)
+            if name == "ssh_make_directory":
+                return self.ssh_make_directory(**arguments)
+            if name == "ssh_remove_path":
+                return self.ssh_remove_path(**arguments)
+            if name == "ssh_path_exists":
+                return self.ssh_path_exists(**arguments)
+            if name == "fetch_web_page":
+                return self.fetch_web_page(**arguments)
+            if name == "search_web":
+                return self.search_web(**arguments)
+            if name == "list_knowledge_documents":
+                return self.list_knowledge_documents(**arguments)
+            if name == "read_knowledge_document":
+                return self.read_knowledge_document(**arguments)
+            return ToolExecutionResult(name=name, ok=False, output=f"Unknown tool: {name}")
+        except Exception as exc:
+            return ToolExecutionResult(name=name, ok=False, output=f"工具执行失败: {exc}")
 
     def set_approval_policy(self, approval_policy: str) -> None:
         """更新工具审批策略。"""
@@ -899,10 +902,15 @@ class ToolExecutor:
             return ToolExecutionResult(name="write_file", ok=False, output=reason)
 
         target = Path(self._resolve_path(path))
-        target.parent.mkdir(parents=True, exist_ok=True)
-        mode = "a" if append else "w"
-        with target.open(mode, encoding="utf-8") as handle:
-            handle.write(content)
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            mode = "a" if append else "w"
+            with target.open(mode, encoding="utf-8") as handle:
+                handle.write(content)
+        except PermissionError as exc:
+            return ToolExecutionResult(name="write_file", ok=False, output=f"写文件失败，权限不足: {target} ({exc})")
+        except OSError as exc:
+            return ToolExecutionResult(name="write_file", ok=False, output=f"写文件失败: {target} ({exc})")
         action = "追加" if append else "写入"
         return ToolExecutionResult(name="write_file", ok=True, output=f"已{action}文件: {target}", metadata={"path": str(target)})
 

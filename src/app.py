@@ -147,12 +147,29 @@ def _handle_slash_command(raw: str, agent: LuminChatAgent, ui: TerminalUI) -> bo
         return False
     if command == "/help":
         ui.show_info(
-            "/help /exit /reset /model <n> /approval <prompt|auto|read-only> /policy <blacklist|whitelist> /cd <path> /cwd /session /shell /memory [query] /restart-shell"
+            "/help /exit /reset /new-session /sessions [/n] /switch-session <id|path> /model <n> /approval <prompt|auto|read-only> /policy <blacklist|whitelist> /cd <path> /cwd /session /shell /memory [query] /restart-shell"
         )
         return True
     if command == "/reset":
         agent.reset_session()
         ui.show_info(f"新会话已创建: {agent.session_path}")
+        return True
+    if command == "/new-session":
+        session_id = agent.create_new_session()
+        ui.show_info(f"已切换到新会话: {session_id}")
+        return True
+    if command == "/sessions":
+        limit = 20
+        if argument.strip().isdigit():
+            limit = max(1, min(int(argument.strip()), 100))
+        ui.show_info(json.dumps(agent.list_sessions(limit=limit), ensure_ascii=False, indent=2))
+        return True
+    if command == "/switch-session":
+        if not argument:
+            ui.show_warning("用法: /switch-session <session_id|path>")
+            return True
+        session_id = agent.switch_session(argument)
+        ui.show_info(f"已切换到会话: {session_id}")
         return True
     if command == "/model":
         if not argument:

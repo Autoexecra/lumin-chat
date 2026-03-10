@@ -99,6 +99,30 @@ def main() -> int:
     memory_state = agent.memory_state()
     require(memory_state["memory_count"] >= 1, f"agent memory state mismatch: {memory_state}")
 
+    original_session_id = agent.session.session_id
+    new_session_id = agent.create_new_session()
+    require(new_session_id != original_session_id, "new session id should be different")
+    require(agent.memory_summary("tl3588 部署") == "当前会话还没有沉淀长期记忆。", "new session should start with empty memory")
+    switched_back = agent.switch_session(original_session_id)
+    require(switched_back == original_session_id, "switch_session should return original session id")
+    require("tl3588" in agent.memory_summary("tl3588 部署"), "switched session should recover previous memory")
+
+    permission_result = executor.execute(
+        ToolCall(
+            id="permission-write",
+            name="write_file",
+            arguments={"path": "/root/Secure_Boot_Documentation.md", "content": "test"},
+        )
+    )
+    if os.geteuid() != 0:
+        require(not permission_result.ok, "permission error should be reported instead of raising")
+
+    hidden_ui = TerminalUI(show_thinking=False)
+    hidden_text = hidden_ui._strip_hidden_thinking("<think>内部推理</think>最终回答")
+    require(hidden_text == "最终回答", f"hidden thinking strip failed: {hidden_text}")
+    hidden_text_without_open = hidden_ui._strip_hidden_thinking("内部推理</think>最终回答")
+    require(hidden_text_without_open == "最终回答", f"hidden thinking strip without open tag failed: {hidden_text_without_open}")
+
     pwd_result = executor.run_shell_command("pwd" if os.name != "nt" else "Get-Location | Select-Object -ExpandProperty Path")
     require(pwd_result.ok, f"pwd failed: {pwd_result.output}")
 

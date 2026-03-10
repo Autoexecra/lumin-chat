@@ -4,7 +4,7 @@ import json
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Dict, List, Optional
 from uuid import uuid4
 
 from src.models import SessionState
@@ -57,6 +57,32 @@ class SessionStore:
         if not sessions:
             return None
         return self.load(str(sessions[0]))
+
+    def list_sessions(self, limit: int = 20) -> List[Dict[str, str]]:
+        """列出最近的会话摘要，供切换与检查使用。"""
+
+        session_files = sorted(self.root_dir.glob("*.json"), key=lambda item: item.stat().st_mtime, reverse=True)
+        results: List[Dict[str, str]] = []
+        for path in session_files[: max(1, min(int(limit), 100))]:
+            try:
+                session = self.load(str(path))
+            except Exception:
+                continue
+            preview = ""
+            for message in session.messages:
+                if message.get("role") == "user":
+                    preview = str(message.get("content", "")).strip().replace("\n", " ")[:80]
+                    break
+            results.append(
+                {
+                    "session_id": session.session_id,
+                    "created_at": session.created_at,
+                    "cwd": session.cwd,
+                    "path": str(path),
+                    "preview": preview or "<empty>",
+                }
+            )
+        return results
 
     def get_path(self, session_id: str) -> Path:
         """根据会话 ID 生成保存路径。"""
