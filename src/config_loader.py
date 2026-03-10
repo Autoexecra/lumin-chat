@@ -18,6 +18,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "show_thinking": True,
         "session_dir": "~/.lumin-chat/sessions",
         "memory_dir": "~/.lumin-chat/memory",
+        "report_dir": "~/lumin-report",
         "memory_recall_limit": 5,
         "memory_max_chars": 1600,
     },
@@ -90,9 +91,9 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "patterns": ["*.md", "*.txt"],
     },
     "deploy": {
-        "host": "117.72.194.76",
-        "port": 3568,
-        "user": "root",
+        "host": "",
+        "port": 22,
+        "user": "",
         "remote_dir": "/root/lumin-chat",
     },
     "build_server": {

@@ -2,6 +2,8 @@
 
 import json
 import os
+import platform
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -48,6 +50,7 @@ class LuminChatAgent:
         self.memory_store = MemoryStore(str(memory_dir))
         self.memory_recall_limit = int(app_config.get("memory_recall_limit", 5))
         self.memory_max_chars = int(app_config.get("memory_max_chars", 1600))
+        self.host_context = self._collect_host_context()
         self.system_prompt = build_system_prompt(config, self.model_level, self.max_model_level)
 
         if session_id_or_path:
@@ -196,9 +199,15 @@ class LuminChatAgent:
     def run(self, user_input: str) -> str:
         """执行一次用户请求，必要时走多轮工具调用。"""
 
+        return str(self.run_with_trace(user_input).get("content", ""))
+
+    def run_with_trace(self, user_input: str) -> dict:
+        """执行一次请求并返回结构化执行轨迹。"""
+
         self.session.messages.append({"role": "user", "content": user_input})
         final_content = ""
         used_tools = False
+        tool_records: list[dict] = []
         recalled_memory = self.memory_store.build_context(
             session_id=self.session.session_id,
             query_text=user_input,
@@ -224,7 +233,14 @@ class LuminChatAgent:
                     continue
                 self.ui.show_error(response.error or "LLM 调用失败")
                 self._save_session()
-                return ""
+                return {
+                    "success": False,
+                    "content": final_content,
+                    "error": response.error or "LLM 调用失败",
+                    "tool_records": tool_records,
+                    "session_id": self.session.session_id,
+                    "cwd": self.executor.cwd,
+                }
 
             assistant_message = self._build_assistant_message(response)
             self.session.messages.append(assistant_message)
@@ -238,7 +254,14 @@ class LuminChatAgent:
                 self.session.cwd = self.executor.cwd
                 self._remember_turn(user_input, final_content)
                 self._save_session()
-                return final_content
+                return {
+                    "success": True,
+                    "content": final_content,
+                    "error": "",
+                    "tool_records": tool_records,
+                    "session_id": self.session.session_id,
+                    "cwd": self.executor.cwd,
+                }
 
             for tool_call in response.tool_calls:
                 used_tools = True
@@ -252,6 +275,14 @@ class LuminChatAgent:
                 self.ui.show_tool_call(tool_call.name, tool_call.arguments)
                 result = self.executor.execute(tool_call)
                 self.ui.show_tool_result(result)
+                tool_records.append(
+                    {
+                        "name": tool_call.name,
+                        "arguments": tool_call.arguments,
+                        "ok": result.ok,
+                        "output": result.output,
+                    }
+                )
 
                 if result.ok:
                     self.consecutive_tool_failures = 0
@@ -274,7 +305,14 @@ class LuminChatAgent:
         self.session.cwd = self.executor.cwd
         self._remember_turn(user_input, final_content)
         self._save_session()
-        return final_content
+        return {
+            "success": False,
+            "content": final_content,
+            "error": "达到最大工具调用轮次，任务被停止。",
+            "tool_records": tool_records,
+            "session_id": self.session.session_id,
+            "cwd": self.executor.cwd,
+        }
 
     def _build_assistant_message(self, response: LLMResponse) -> dict:
         """把 LLM 响应转换为会话消息格式。"""
@@ -381,9 +419,39 @@ class LuminChatAgent:
     def _build_messages_for_model(self, recalled_memory: str) -> list[dict]:
         """构造发给模型的消息列表，并在需要时注入长期记忆。"""
 
-        if not recalled_memory:
-            return list(self.session.messages)
-        return list(self.session.messages) + [{"role": "system", "content": recalled_memory}]
+        messages = list(self.session.messages)
+        runtime_context = self._build_runtime_context_message()
+        if runtime_context:
+            messages.append({"role": "system", "content": runtime_context})
+        if recalled_memory:
+            messages.append({"role": "system", "content": recalled_memory})
+        return messages
+
+    def _build_runtime_context_message(self) -> str:
+        """构造随请求注入的主机运行时上下文。"""
+
+        parts = [self.host_context.strip()] if self.host_context else []
+        parts.append(f"当前工作目录: {self.executor.cwd}")
+        return "\n".join(part for part in parts if part).strip()
+
+    def _collect_host_context(self) -> str:
+        """收集当前主机的基础环境信息。"""
+
+        os_release = ""
+        os_release_path = Path("/etc/os-release")
+        if os_release_path.exists():
+            os_release = os_release_path.read_text(encoding="utf-8", errors="replace").strip()
+        uname = " ".join(platform.uname())
+        python_version = sys.version.split()[0]
+        parts = [
+            "当前主机基础信息:",
+            f"- Python: {python_version}",
+            f"- uname -a: {uname}",
+        ]
+        if os_release:
+            parts.append("- /etc/os-release:")
+            parts.append(os_release)
+        return "\n".join(parts)
 
     def _remember_turn(self, user_input: str, final_content: str) -> None:
         """把本轮输入输出沉淀到会话长期记忆。"""

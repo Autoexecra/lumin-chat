@@ -2,7 +2,7 @@
 
 ## 1. 测试环境
 
-- 生成时间: 2026-03-10 15:46:35
+- 生成时间: 2026-03-10 18:07:51
 - 目标主机: yanggan@tl3588:22
 - 远端目录: /var/lib/lumin-chat
 - 通过情况: 9/9
@@ -91,14 +91,15 @@ usage: main.py [-h] [--config CONFIG] [--model-level MODEL_LEVEL]
                [--command-policy-mode {blacklist,whitelist}]
                [--workdir WORKDIR] [--session SESSION] [--show-thinking]
                [--hide-thinking]
-               {chat,ask} ...
+               {chat,ask,batch} ...
 
 lumin-chat 终端代理
 
 positional arguments:
-  {chat,ask}
+  {chat,ask,batch}
     chat                启动交互式对话
     ask                 执行一次非交互请求
+    batch               按 JSON 文件批量执行任务
 
 options:
   -h, --help            show this help message and exit
@@ -124,7 +125,7 @@ Warning: Permanently added '192.168.0.11' (ED25519) to the list of known hosts.
 
 命令：
 ```bash
-cd /var/lib/lumin-chat && python3 scripts/smoke_test.py
+cd /var/lib/lumin-chat && if [ -x .venv/bin/python ]; then .venv/bin/python scripts/smoke_test.py; elif [ -d vendor ]; then PYTHONPATH=vendor python3 scripts/smoke_test.py; else python3 scripts/smoke_test.py; fi
 ```
 
 退出码：0
@@ -143,7 +144,7 @@ Warning: Permanently added '192.168.0.11' (ED25519) to the list of known hosts.
 
 命令：
 ```bash
-docker pull ubuntu:latest
+update-ca-trust extract >/dev/null 2>&1 || true; systemctl restart docker >/dev/null 2>&1 || true; docker pull ubuntu:latest
 ```
 
 退出码：0

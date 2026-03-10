@@ -14,6 +14,7 @@ except ImportError:
     FileHistory = None
 
 from src.agent import LuminChatAgent
+from src.batch_runner import BatchTaskRunner
 from src.config_loader import load_config
 from src.ui import TerminalUI
 
@@ -67,6 +68,10 @@ def build_parser() -> argparse.ArgumentParser:
     ask_parser = subparsers.add_parser("ask", help="执行一次非交互请求")
     ask_parser.add_argument("prompt", help="发送给代理的提示词")
 
+    batch_parser = subparsers.add_parser("batch", help="按 JSON 文件批量执行任务")
+    batch_parser.add_argument("task_file", help="批量任务 JSON 文件路径")
+    batch_parser.add_argument("--report-dir", help="报告输出目录，默认 ~/lumin-report")
+
     return parser
 
 
@@ -92,15 +97,28 @@ def main(argv: Optional[list[str]] = None) -> int:
         show_thinking = False
 
     ui = TerminalUI(show_thinking=show_thinking)
-    agent = LuminChatAgent(
-        config=config,
-        ui=ui,
-        model_level=model_level,
-        approval_policy=approval_mode,
-        workdir=args.workdir,
-        session_id_or_path=args.session,
-    )
-    agent.set_command_policy_mode(command_policy_mode)
+    def create_agent() -> LuminChatAgent:
+        agent = LuminChatAgent(
+            config=config,
+            ui=ui,
+            model_level=model_level,
+            approval_policy=approval_mode,
+            workdir=args.workdir,
+            session_id_or_path=args.session,
+        )
+        agent.set_command_policy_mode(command_policy_mode)
+        return agent
+
+    if args.command == "batch":
+        runner = BatchTaskRunner(
+            agent_factory=create_agent,
+            report_dir=getattr(args, "report_dir", None) or app_config.get("report_dir", "~/lumin-report"),
+        )
+        results = runner.run_file(args.task_file, report_dir=getattr(args, "report_dir", None))
+        ui.show_info(json.dumps(results, ensure_ascii=False, indent=2))
+        return 0
+
+    agent = create_agent()
 
     if args.command == "ask":
         agent.run(args.prompt)

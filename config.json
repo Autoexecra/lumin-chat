@@ -6,6 +6,7 @@
     "show_thinking": true,
     "session_dir": "~/.lumin-chat/sessions",
     "memory_dir": "~/.lumin-chat/memory",
+    "report_dir": "~/lumin-report",
     "memory_recall_limit": 5,
     "memory_max_chars": 1600
   },
@@ -77,28 +78,28 @@
     "upgrade_on_llm_error": true
   },
   "knowledge_base": {
-    "enabled": true,
-    "host": "117.72.194.76",
+    "enabled": false,
+    "host": "YOUR_KB_HOST",
     "port": 22,
-    "username": "root",
-    "password": "!!!zzxxccvvbbnnmmMMNN12345678",
-    "root_dir": "/root/share/Document-library",
+    "username": "YOUR_KB_USERNAME",
+    "password": "YOUR_KB_PASSWORD",
+    "root_dir": "/path/to/document-library",
     "patterns": [
       "*.md",
       "*.txt"
     ]
   },
   "deploy": {
-    "host": "117.72.194.76",
-    "port": 3568,
-    "user": "root",
+    "host": "YOUR_TARGET_HOST_OR_SSH_ALIAS",
+    "port": 22,
+    "user": "YOUR_TARGET_USER",
     "remote_dir": "/root/lumin-chat"
   },
   "build_server": {
     "enabled": false,
-    "host": "",
+    "host": "YOUR_BUILD_HOST_OR_SSH_ALIAS",
     "port": 22,
-    "user": "root",
+    "user": "YOUR_BUILD_USER",
     "password": "",
     "remote_dir": "/root/lumin-chat-build"
   },
@@ -108,38 +109,41 @@
       "provider": "iflow",
       "model": "qwen3-235b-a22b-thinking-2507",
       "base_url": "https://apis.iflow.cn/v1",
-      "api_key": "sk-108578bf2396a9c396cc5cb1b973e834",
+      "api_key": "",
+      "api_key_env": "LUMIN_CHAT_LEVEL1_API_KEY",
       "temperature": 0,
       "max_tokens": 131072,
       "enable_thinking": true
-    }, 
+    },
     "level2": {
       "name": "qwen3-235b-a22b-instruct",
       "provider": "iflow",
       "model": "qwen3-235b-a22b-instruct",
       "base_url": "https://apis.iflow.cn/v1",
-      "api_key": "sk-108578bf2396a9c396cc5cb1b973e834",
+      "api_key": "",
+      "api_key_env": "LUMIN_CHAT_LEVEL2_API_KEY",
       "temperature": 0,
       "max_tokens": 131072,
       "enable_thinking": true
-    },     
+    },
     "level3": {
       "name": "DeepSeek-V3",
       "provider": "siliconflow",
       "model": "Pro/deepseek-ai/DeepSeek-V3.2",
       "base_url": "https://api.siliconflow.cn/v1",
-      "api_key": "sk-icdjqxvbjfzptcpexcpxwksqodfufnsqwhasqwvwzouwhrwm",
+      "api_key": "",
+      "api_key_env": "LUMIN_CHAT_LEVEL3_API_KEY",
       "temperature": 0.1,
       "max_tokens": 163840,
       "enable_thinking": true
     },
     "level4": {
-
       "name": "DeepSeek-V3",
       "provider": "siliconflow",
       "model": "Pro/deepseek-ai/DeepSeek-V3.2",
       "base_url": "https://api.siliconflow.cn/v1",
-      "api_key": "sk-icdjqxvbjfzptcpexcpxwksqodfufnsqwhasqwvwzouwhrwm",
+      "api_key": "",
+      "api_key_env": "LUMIN_CHAT_LEVEL4_API_KEY",
       "temperature": 0,
       "max_tokens": 163840,
       "enable_thinking": true
@@ -149,7 +153,8 @@
       "provider": "siliconflow",
       "model": "Qwen/Qwen3-8B",
       "base_url": "https://api.siliconflow.cn/v1",
-      "api_key": "sk-icdjqxvbjfzptcpexcpxwksqodfufnsqwhasqwvwzouwhrwm",
+      "api_key": "",
+      "api_key_env": "LUMIN_CHAT_LEVEL5_API_KEY",
       "temperature": 0.1,
       "max_tokens": 131072,
       "enable_thinking": true

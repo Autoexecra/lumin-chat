@@ -78,19 +78,26 @@ def _looks_like_ip(host: str) -> bool:
     return bool(re.fullmatch(r"[0-9.]+", host or ""))
 
 
+def _sanitize_placeholder(value: object) -> str:
+    """把发布态占位符值转换为空字符串。"""
+
+    text = str(value or "").strip()
+    return "" if text.startswith("YOUR_") else text
+
+
 def resolve_target_config(config: Dict, args: argparse.Namespace) -> Dict[str, object]:
     """解析目标测试板连接参数。"""
 
     deploy_config = config.get("deploy", {})
-    host = args.host or deploy_config.get("host", "117.72.194.76")
+    host = args.host or _sanitize_placeholder(deploy_config.get("host", ""))
     port = args.port or int(deploy_config.get("port", 3568))
-    password = args.password or ""
+    password = args.password or _sanitize_placeholder(deploy_config.get("password", ""))
     if args.user is not None:
         user = args.user
     elif args.host and port == 22 and not password and not _looks_like_ip(str(host)):
         user = ""
     else:
-        user = deploy_config.get("user", getpass.getuser())
+        user = _sanitize_placeholder(deploy_config.get("user", getpass.getuser()))
     return {
         "host": host,
         "port": port,
@@ -106,15 +113,15 @@ def resolve_build_config(config: Dict, args: argparse.Namespace) -> Dict[str, ob
     build_config = config.get("build_server", {})
     cli_enabled = any([args.build_host, args.build_password, args.build_user is not None, args.build_remote_dir])
     enabled = bool(args.use_build_server or cli_enabled or build_config.get("enabled", False))
-    host = args.build_host or build_config.get("host", "")
+    host = args.build_host or _sanitize_placeholder(build_config.get("host", ""))
     port = args.build_port or int(build_config.get("port", 22))
-    password = args.build_password if args.build_password is not None else build_config.get("password", "")
+    password = args.build_password if args.build_password is not None else _sanitize_placeholder(build_config.get("password", ""))
     if args.build_user is not None:
         user = args.build_user
     elif args.build_host and port == 22 and not password and not _looks_like_ip(str(host)):
         user = ""
     else:
-        user = build_config.get("user", getpass.getuser())
+        user = _sanitize_placeholder(build_config.get("user", getpass.getuser()))
     return {
         "enabled": enabled,
         "host": host,
@@ -526,7 +533,7 @@ def _rpm_install_verified(connection: SSHConnectionConfig) -> bool:
     """在 SSH CLI 场景下回查 RPM 是否已安装成功。"""
 
     try:
-        check = run_ssh_cli_with_retry(connection, "rpm -q lumin-chat", timeout_seconds=120)
+        check = run_ssh_cli_with_retry(connection, "rpm -q lumin-chat && /usr/bin/lumin-chat --help >/dev/null 2>&1", timeout_seconds=180)
     except Exception:
         return False
     return check.returncode == 0

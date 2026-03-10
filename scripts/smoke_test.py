@@ -4,6 +4,7 @@ import json
 import os
 import tempfile
 import sys
+from copy import deepcopy
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -14,6 +15,7 @@ from src.config_loader import load_config
 from src.document_library import KnowledgeBaseClient
 from src.memory_store import MemoryStore
 from src.agent import LuminChatAgent
+from src.batch_runner import BatchTaskRunner
 from src.models import ToolCall
 from src.toolkit import ToolExecutor
 from src.ui import TerminalUI
@@ -41,6 +43,10 @@ def main() -> int:
 
     executor = ToolExecutor(cwd=os.getcwd(), config=TEST_CONFIG, approval_policy="auto")
     runtime_config = load_config(str(PROJECT_ROOT / "config.json"))
+    runtime_config = deepcopy(runtime_config)
+    for model_config in runtime_config.get("ai", {}).values():
+        if isinstance(model_config, dict) and not model_config.get("api_key"):
+            model_config["api_key"] = "smoke-test-key"
 
     env_result = executor.get_environment()
     env_payload = json.loads(env_result.output)
@@ -98,6 +104,11 @@ def main() -> int:
     require("tl3588" in agent_memory, f"agent memory summary mismatch: {agent_memory}")
     memory_state = agent.memory_state()
     require(memory_state["memory_count"] >= 1, f"agent memory state mismatch: {memory_state}")
+    prompt_messages = agent._build_messages_for_model("")
+    require(
+        any("当前主机基础信息" in str(message.get("content", "")) for message in prompt_messages if message.get("role") == "system"),
+        f"host context missing from prompt messages: {prompt_messages}",
+    )
 
     original_session_id = agent.session.session_id
     new_session_id = agent.create_new_session()
@@ -122,6 +133,59 @@ def main() -> int:
     require(hidden_text == "最终回答", f"hidden thinking strip failed: {hidden_text}")
     hidden_text_without_open = hidden_ui._strip_hidden_thinking("内部推理</think>最终回答")
     require(hidden_text_without_open == "最终回答", f"hidden thinking strip without open tag failed: {hidden_text_without_open}")
+
+    with tempfile.TemporaryDirectory(prefix="lumin-chat-batch-") as batch_dir:
+        task_file = Path(batch_dir) / "tasks.json"
+        report_dir = Path(batch_dir) / "reports"
+        task_file.write_text(
+            json.dumps(
+                [
+                    {"task": "第一个任务", "new_session": True},
+                    {"task": "第二个任务", "new_session": False},
+                    {"task": "失败任务", "new_session": True},
+                ],
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+
+        class FakeAgent:
+            def __init__(self):
+                self._index = 0
+                self.cwd = "/tmp"
+                self.session = type("Session", (), {"session_id": "session-1"})()
+
+            def create_new_session(self) -> str:
+                self._index += 1
+                self.session = type("Session", (), {"session_id": f"session-{self._index + 1}"})()
+                return self.session.session_id
+
+            def run_with_trace(self, user_input: str) -> dict:
+                if user_input == "失败任务":
+                    return {
+                        "success": False,
+                        "content": "",
+                        "error": "模拟失败",
+                        "tool_records": [{"name": "run_shell_command", "arguments": {"command": "false"}, "ok": False, "output": "exit 1"}],
+                        "session_id": self.session.session_id,
+                        "cwd": self.cwd,
+                    }
+                return {
+                    "success": True,
+                    "content": f"已完成: {user_input}",
+                    "error": "",
+                    "tool_records": [{"name": "run_shell_command", "arguments": {"command": "printf ready"}, "ok": True, "output": "ready"}],
+                    "session_id": self.session.session_id,
+                    "cwd": self.cwd,
+                }
+
+        fake_agent = FakeAgent()
+        runner = BatchTaskRunner(agent_factory=lambda: fake_agent, report_dir=str(report_dir))
+        batch_results = runner.run_file(str(task_file))
+        require(len(batch_results) == 3, f"batch result count mismatch: {batch_results}")
+        require(batch_results[1]["session_id"] == batch_results[0]["session_id"], f"batch session reuse mismatch: {batch_results}")
+        require(batch_results[2]["success"] is False, f"batch failure not captured: {batch_results}")
+        require(Path(batch_results[0]["report_path"]).exists(), f"batch report missing: {batch_results}")
 
     pwd_result = executor.run_shell_command("pwd" if os.name != "nt" else "Get-Location | Select-Object -ExpandProperty Path")
     require(pwd_result.ok, f"pwd failed: {pwd_result.output}")

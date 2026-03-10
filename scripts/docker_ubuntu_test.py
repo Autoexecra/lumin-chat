@@ -82,11 +82,16 @@ def build_test_cases(
         },
         {
             "name": "执行项目冒烟测试",
-            "command": f"cd {remote_dir} && python3 scripts/smoke_test.py",
+            "command": (
+                f"cd {remote_dir} && "
+                "if [ -x .venv/bin/python ]; then .venv/bin/python scripts/smoke_test.py; "
+                "elif [ -d vendor ]; then PYTHONPATH=vendor python3 scripts/smoke_test.py; "
+                "else python3 scripts/smoke_test.py; fi"
+            ),
         },
         {
             "name": "拉取 Ubuntu 镜像",
-            "command": "docker pull ubuntu:latest",
+            "command": "update-ca-trust extract >/dev/null 2>&1 || true; systemctl restart docker >/dev/null 2>&1 || true; docker pull ubuntu:latest",
         },
         {
             "name": "读取 Ubuntu 系统信息",

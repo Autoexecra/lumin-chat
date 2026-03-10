@@ -98,7 +98,32 @@ set -euo pipefail
 APP_DIR={APP_DIR}
 CONFIG_PATH={CONFIG_PATH}
 VENV_PYTHON="$APP_DIR/.venv/bin/python"
+ensure_runtime() {{
+    update-ca-trust extract >/dev/null 2>&1 || true
+    python3 -m ensurepip --upgrade >/dev/null 2>&1 || true
+    if python3 -m venv "$APP_DIR/.venv" >/dev/null 2>&1; then
+        "$VENV_PYTHON" -m pip install -r "$APP_DIR/requirements.txt"
+        return 0
+    fi
+    mkdir -p "$APP_DIR/vendor"
+    python3 -m pip install --target "$APP_DIR/vendor" -r "$APP_DIR/requirements.txt"
+}}
+
+check_runtime() {{
+    local target_python="$1"
+    "$target_python" - <<'PY' >/dev/null 2>&1
+import httpx
+import openai
+import paramiko
+import prompt_toolkit
+import rich
+PY
+}}
+
 if [[ -x "$VENV_PYTHON" ]]; then
+    if ! check_runtime "$VENV_PYTHON"; then
+        ensure_runtime
+    fi
     export PYTHONIOENCODING=UTF-8
     export PYTHONUTF8=1
     exec "$VENV_PYTHON" "$APP_DIR/main.py" --config "$CONFIG_PATH" "$@"
@@ -107,7 +132,22 @@ export PYTHONIOENCODING=UTF-8
 export PYTHONUTF8=1
 if [[ -d "$APP_DIR/vendor" ]]; then
     export PYTHONPATH="$APP_DIR/vendor:${{PYTHONPATH:-}}"
+    if python3 - <<'PY' >/dev/null 2>&1
+import httpx
+import openai
+import paramiko
+import prompt_toolkit
+import rich
+PY
+    then
+        exec python3 "$APP_DIR/main.py" --config "$CONFIG_PATH" "$@"
+    fi
 fi
+ensure_runtime
+if [[ -x "$VENV_PYTHON" ]]; then
+    exec "$VENV_PYTHON" "$APP_DIR/main.py" --config "$CONFIG_PATH" "$@"
+fi
+export PYTHONPATH="$APP_DIR/vendor:${{PYTHONPATH:-}}"
 exec python3 "$APP_DIR/main.py" --config "$CONFIG_PATH" "$@"
 EOF
 chmod 0755 %{{buildroot}}{LAUNCHER_PATH}
@@ -121,16 +161,15 @@ CONFIG_PATH={CONFIG_PATH}
 export PIP_DISABLE_PIP_VERSION_CHECK=1
 export PYTHONIOENCODING=UTF-8
 export PYTHONUTF8=1
+update-ca-trust extract >/dev/null 2>&1 || true
+python3 -m compileall "$APP_DIR/main.py" "$APP_DIR/src" "$APP_DIR/scripts" >/dev/null 2>&1 || true
 python3 -m ensurepip --upgrade >/dev/null 2>&1 || true
 if python3 -m venv "$APP_DIR/.venv" >/dev/null 2>&1; then
-    "$APP_DIR/.venv/bin/python" -m pip install --upgrade pip
     "$APP_DIR/.venv/bin/python" -m pip install -r "$APP_DIR/requirements.txt"
 else
     mkdir -p "$APP_DIR/vendor"
-    python3 -m pip install --upgrade pip
     python3 -m pip install --target "$APP_DIR/vendor" -r "$APP_DIR/requirements.txt"
 fi
-python3 -m compileall "$APP_DIR/main.py" "$APP_DIR/src" "$APP_DIR/scripts" >/dev/null 2>&1 || true
 if [[ ! -f "$CONFIG_PATH" ]]; then
     mkdir -p "$(dirname "$CONFIG_PATH")"
     cp "$APP_DIR/config.json" "$CONFIG_PATH"

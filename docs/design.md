@@ -38,6 +38,7 @@ flowchart LR
 2. **代理层**：负责多轮对话、工具调用编排、自动升模和长期记忆召回。
 3. **工具层**：负责 Shell、SSH、Web、文件、文档库等实际执行能力。
 4. **存储层**：分为会话存储和长期记忆存储两部分。
+5. **批处理层**：负责读取 JSON 任务文件、控制会话切换、逐任务生成报告。
 
 ---
 
@@ -75,6 +76,30 @@ sequenceDiagram
 - 长期记忆不是替代会话上下文，而是作为额外检索层。
 - 当前轮用户输入会触发一次长期记忆召回。
 - 最终完成后会把本轮输入输出沉淀进长期记忆库。
+- 每次发给模型时都会额外注入当前主机基础信息，如 `/etc/os-release` 与 `uname -a`，帮助模型做出更准确判断。
+
+---
+
+## 3.2 批量任务执行设计
+
+```mermaid
+flowchart LR
+    JSON[批量任务 JSON] --> RUNNER[batch_runner.py]
+    RUNNER --> SESSIONCTRL{new_session?}
+    SESSIONCTRL -- 是 --> NEWSESSION[创建新会话]
+    SESSIONCTRL -- 否 --> KEEPSESSION[复用当前会话]
+    NEWSESSION --> AGENT[agent.py 执行任务]
+    KEEPSESSION --> AGENT
+    AGENT --> REPORT[生成单任务 Markdown 报告]
+    REPORT --> OUTDIR[~/lumin-report 或指定目录]
+```
+
+批处理遵循以下原则：
+
+- 输入为 JSON 数组，每一项至少包含 `task`
+- `new_session` 默认值为 `true`
+- 单个任务失败只记录到对应报告，不中断后续任务
+- 每个任务都生成独立 Markdown 报告，便于归档与追溯
 
 ---
 
