@@ -1,3 +1,7 @@
+# Copyright (c) 2026 Autoexecra
+# Licensed under the Apache License, Version 2.0.
+# See LICENSE in the project root for license terms.
+
 """lumin-chat 一键构建、RPM 打包、部署与远端测试脚本。"""
 
 from __future__ import annotations
@@ -31,7 +35,7 @@ def stage_project(project_root: Path, stage_root: Path) -> None:
         shutil.rmtree(stage_root)
     stage_root.mkdir(parents=True, exist_ok=True)
 
-    for file_name in ["main.py", "config.json", "requirements.txt", "deploy.py", "README.md"]:
+    for file_name in ["main.py", "config.json", "requirements.txt", "deploy.py", "README.md", "LICENSE"]:
         shutil.copy2(project_root / file_name, stage_root / file_name)
 
     for folder_name in ["docs", "scripts", "src"]:
@@ -539,10 +543,13 @@ def _rpm_install_verified(connection: SSHConnectionConfig) -> bool:
     return check.returncode == 0
 
 
-def run_remote_validation(target_config: Dict[str, object], report_path: Path) -> Dict[str, object]:
+def run_remote_validation(target_config: Dict[str, object], report_path: Path, package_format: str = "rpm") -> Dict[str, object]:
     """在目标机执行安装验证、项目冒烟与 Docker Ubuntu 非交互测试。"""
 
     results: List[Dict[str, object]] = []
+    remote_dir = APP_INSTALL_DIR if package_format == "rpm" else str(target_config["remote_dir"])
+    launcher_path = f"{LAUNCHER_PATH} --help" if package_format == "rpm" else f"cd {remote_dir} && python3 main.py --help"
+    config_path = SYSTEM_CONFIG_PATH if package_format == "rpm" else f"{remote_dir}/config.json"
     connection = make_connection(
         host=str(target_config["host"]),
         port=int(target_config["port"]),
@@ -550,7 +557,7 @@ def run_remote_validation(target_config: Dict[str, object], report_path: Path) -
         password=str(target_config["password"]),
     )
     if not str(target_config["password"]):
-        for test_case in build_test_cases(APP_INSTALL_DIR, LAUNCHER_PATH, SYSTEM_CONFIG_PATH):
+        for test_case in build_test_cases(remote_dir, launcher_path, config_path):
             completed = run_ssh_cli_with_retry(connection, test_case["command"], timeout_seconds=600)
             results.append(
                 {
@@ -563,7 +570,7 @@ def run_remote_validation(target_config: Dict[str, object], report_path: Path) -
             )
     else:
         with SSHRemoteClient(connection) as client:
-            for test_case in build_test_cases(APP_INSTALL_DIR, LAUNCHER_PATH, SYSTEM_CONFIG_PATH):
+            for test_case in build_test_cases(remote_dir, launcher_path, config_path):
                 completed = client.run(test_case["command"], timeout_seconds=600)
                 results.append(
                     {
@@ -580,7 +587,7 @@ def run_remote_validation(target_config: Dict[str, object], report_path: Path) -
         host=str(target_config["host"]),
         port=int(target_config["port"]),
         user=str(target_config["user"] or getpass.getuser()),
-        remote_dir=APP_INSTALL_DIR,
+        remote_dir=remote_dir,
         results=results,
     )
     report_path.write_text(report_text, encoding="utf-8")
@@ -658,7 +665,7 @@ def main() -> int:
         summary["installed_to"] = str(target_config["remote_dir"])
 
     if args.run_tests:
-        summary.update(run_remote_validation(target_config, report_path))
+        summary.update(run_remote_validation(target_config, report_path, package_format=args.package_format))
         summary["tests_ran"] = True
 
     print(json.dumps(summary, ensure_ascii=False, indent=2))

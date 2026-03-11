@@ -89,6 +89,13 @@
       "*.txt"
     ]
   },
+  "license": {
+    "enabled": false,
+    "subject": "lumin-chat",
+    "license_file": "/etc/lumin-chat/license.json",
+    "secret_env": "LUMIN_CHAT_LICENSE_SECRET",
+    "secret": ""
+  },
   "deploy": {
     "host": "YOUR_TARGET_HOST_OR_SSH_ALIAS",
     "port": 22,

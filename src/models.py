@@ -1,3 +1,7 @@
+# Copyright (c) 2026 Autoexecra
+# Licensed under the Apache License, Version 2.0.
+# See LICENSE in the project root for license terms.
+
 """lumin-chat 运行时共享数据模型。"""
 
 from dataclasses import dataclass, field

@@ -1,3 +1,7 @@
+# Copyright (c) 2026 Autoexecra
+# Licensed under the Apache License, Version 2.0.
+# See LICENSE in the project root for license terms.
+
 # lumin-chat 远程部署脚本。
 
 param(
@@ -28,6 +32,7 @@ Copy-Item -Path (Join-Path $ProjectRoot "main.py") -Destination (Join-Path $Stag
 Copy-Item -Path (Join-Path $ProjectRoot "config.json") -Destination (Join-Path $StageRoot "config.json") -Force
 Copy-Item -Path (Join-Path $ProjectRoot "requirements.txt") -Destination (Join-Path $StageRoot "requirements.txt") -Force
 Copy-Item -Path (Join-Path $ProjectRoot "deploy.py") -Destination (Join-Path $StageRoot "deploy.py") -Force
+Copy-Item -Path (Join-Path $ProjectRoot "LICENSE") -Destination (Join-Path $StageRoot "LICENSE") -Force
 Copy-Item -Path (Join-Path $ProjectRoot "docs\*.md") -Destination (Join-Path $StageRoot "docs") -Force
 Copy-Item -Path (Join-Path $ProjectRoot "scripts\remote_bootstrap.sh") -Destination (Join-Path $StageRoot "scripts\remote_bootstrap.sh") -Force
 Copy-Item -Path (Join-Path $ProjectRoot "scripts\smoke_test.py") -Destination (Join-Path $StageRoot "scripts\smoke_test.py") -Force

@@ -1,3 +1,7 @@
+# Copyright (c) 2026 Autoexecra
+# Licensed under the Apache License, Version 2.0.
+# See LICENSE in the project root for license terms.
+
 """SSH 远程执行与文件传输封装。"""
 
 from __future__ import annotations

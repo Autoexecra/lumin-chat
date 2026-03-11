@@ -77,6 +77,7 @@ sequenceDiagram
 - 当前轮用户输入会触发一次长期记忆召回。
 - 最终完成后会把本轮输入输出沉淀进长期记忆库。
 - 每次发给模型时都会额外注入当前主机基础信息，如 `/etc/os-release` 与 `uname -a`，帮助模型做出更准确判断。
+- 在交付场景下，可选启用运行时许可证校验，拦截未授权启动。
 
 ---
 
@@ -229,21 +230,33 @@ flowchart TB
 
     REMOTE --> R1[ssh_execute_command]
     REMOTE --> R2[ssh_upload_file / ssh_download_file]
-    REMOTE --> R3[ssh_read_file / ssh_write_file]
-    REMOTE --> R4[ssh_list_directory / ssh_make_directory / ssh_remove_path / ssh_path_exists]
+    REMOTE --> R3[ssh_read_file / ssh_write_file / ssh_list_directory]
 
     WEB --> W1[fetch_web_page]
     WEB --> W2[search_web]
 
     DOC --> D1[list_knowledge_documents]
-    DOC --> D2[read_knowledge_document]
+    DOC --> D2[read_knowledge_document / write_knowledge_document]
 ```
 
 ### 5.2 工具设计原则
 
 - 能直接用一两条简单 Linux 命令替代的，不优先抽成复杂工具。
 - 需要稳定封装、跨环境复用、对模型更友好的能力，优先做工具化。
-- SSH 文件管理、网页抓取、文档库读取都符合“难以让模型稳定直接拼命令”的场景，因此适合做工具。
+- SSH 文件传输、网页抓取、文档库读写都符合“难以让模型稳定直接拼命令”的场景，因此适合做工具。
+- 像远端 `mkdir`、`rm -rf`、`test -e` 这类简单动作，优先通过 `ssh_execute_command` 执行，不单独暴露工具名。
+
+### 5.3 许可证保护设计
+
+项目提供可选许可证校验模块 `license_guard.py`，用于交付场景中的授权控制。
+
+校验入口位于 CLI 启动前，主要检查：
+
+- 许可证文件是否存在
+- HMAC-SHA256 签名是否匹配
+- `subject` 是否匹配 `lumin-chat`
+- 是否过期
+- 当前主机是否在允许列表中
 
 ---
 
@@ -278,9 +291,9 @@ flowchart LR
 
 ```mermaid
 flowchart TB
-    RPM[lumin-chat.rpm] --> ETC[/etc/lumin-chat/config.json]
-    RPM --> BIN[/usr/bin/lumin-chat]
-    RPM --> LIB[/var/lib/lumin-chat]
+    RPM[lumin-chat.rpm] --> ETC["/etc/lumin-chat/config.json"]
+    RPM --> BIN["/usr/bin/lumin-chat"]
+    RPM --> LIB["/var/lib/lumin-chat"]
     LIB --> SRC[源码与脚本]
     LIB --> DOCS[文档]
     LIB --> VENV[.venv 或 vendor 依赖目录]

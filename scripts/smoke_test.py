@@ -1,3 +1,7 @@
+# Copyright (c) 2026 Autoexecra
+# Licensed under the Apache License, Version 2.0.
+# See LICENSE in the project root for license terms.
+
 """lumin-chat 本地基础冒烟测试。"""
 
 import json
@@ -13,6 +17,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.config_loader import load_config
 from src.document_library import KnowledgeBaseClient
+from src.license_guard import generate_license_document, validate_license_document
 from src.memory_store import MemoryStore
 from src.agent import LuminChatAgent
 from src.batch_runner import BatchTaskRunner
@@ -91,6 +96,21 @@ def main() -> int:
         require(any("tl3588" in item for item in notes), f"memory notes missing tl3588: {notes}")
         recalled = memory_store.build_context(session_id, "部署到 tl3588 时使用什么方式", limit=3, max_chars=600)
         require("tl3588" in recalled and "rpm" in recalled, f"memory recall mismatch: {recalled}")
+
+    hostname = os.uname().nodename
+    license_payload = {
+        "subject": "lumin-chat",
+        "issued_to": "smoke-test",
+        "expires_at": "2099-01-01T00:00:00Z",
+        "hostnames": [hostname],
+    }
+    license_doc = generate_license_document(license_payload, "smoke-secret")
+    license_ok = validate_license_document(license_doc, "smoke-secret", current_hostname=hostname)
+    require(license_ok.ok, f"license validation failed: {license_ok.message}")
+    broken_license = dict(license_doc)
+    broken_license["signature"] = "broken"
+    license_fail = validate_license_document(broken_license, "smoke-secret", current_hostname=hostname)
+    require(not license_fail.ok, "invalid license should be rejected")
 
     agent = LuminChatAgent(
         config=runtime_config,
@@ -237,14 +257,15 @@ def main() -> int:
         local_upload.parent.mkdir(parents=True, exist_ok=True)
         local_upload.write_text("ssh file tool ready\n", encoding="utf-8")
 
-        mkdir_result = executor.ssh_make_directory(
+        mkdir_result = executor.ssh_execute_command(
             host=ssh_host,
             port=int(os.getenv("LUMIN_CHAT_TEST_SSH_PORT", "22")),
             username=ssh_user,
             password=os.getenv("LUMIN_CHAT_TEST_SSH_PASSWORD", ""),
-            path=remote_dir,
+            command=f"mkdir -p {remote_dir}",
+            timeout_seconds=30,
         )
-        require(mkdir_result.ok, f"ssh_make_directory failed: {mkdir_result.output}")
+        require(mkdir_result.ok, f"ssh_execute_command mkdir failed: {mkdir_result.output}")
 
         upload_result = executor.ssh_upload_file(
             host=ssh_host,
@@ -277,15 +298,16 @@ def main() -> int:
         )
         require(write_result.ok, f"ssh_write_file failed: {write_result.output}")
 
-        exists_result = executor.ssh_path_exists(
+        exists_result = executor.ssh_execute_command(
             host=ssh_host,
             port=int(os.getenv("LUMIN_CHAT_TEST_SSH_PORT", "22")),
             username=ssh_user,
             password=os.getenv("LUMIN_CHAT_TEST_SSH_PASSWORD", ""),
-            path=f"{remote_dir}/generated.txt",
+            command=f"test -f {remote_dir}/generated.txt && printf exists",
+            timeout_seconds=30,
         )
-        require(exists_result.ok, f"ssh_path_exists failed: {exists_result.output}")
-        require(json.loads(exists_result.output).get("exists") is True, f"ssh_path_exists unexpected: {exists_result.output}")
+        require(exists_result.ok, f"ssh_execute_command exists failed: {exists_result.output}")
+        require("exists" in json.loads(exists_result.output).get("stdout", ""), f"ssh exists unexpected: {exists_result.output}")
 
         list_result = executor.ssh_list_directory(
             host=ssh_host,
@@ -309,14 +331,15 @@ def main() -> int:
         require(download_result.ok, f"ssh_download_file failed: {download_result.output}")
         require(local_download.read_text(encoding="utf-8").startswith("generated"), "ssh_download_file content mismatch")
 
-        remove_result = executor.ssh_remove_path(
+        remove_result = executor.ssh_execute_command(
             host=ssh_host,
             port=int(os.getenv("LUMIN_CHAT_TEST_SSH_PORT", "22")),
             username=ssh_user,
             password=os.getenv("LUMIN_CHAT_TEST_SSH_PASSWORD", ""),
-            path=remote_dir,
+            command=f"rm -rf {remote_dir}",
+            timeout_seconds=30,
         )
-        require(remove_result.ok, f"ssh_remove_path failed: {remove_result.output}")
+        require(remove_result.ok, f"ssh_execute_command remove failed: {remove_result.output}")
 
     print("smoke_test: ok")
     return 0

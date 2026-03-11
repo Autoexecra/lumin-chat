@@ -1,3 +1,7 @@
+# Copyright (c) 2026 Autoexecra
+# Licensed under the Apache License, Version 2.0.
+# See LICENSE in the project root for license terms.
+
 """lumin-chat 工具执行器。
 
 这个模块负责本地工具注册、命令策略校验、Linux 持久 shell，
@@ -238,13 +242,11 @@ class ToolExecutor:
         "ssh_list_directory": {"host", "port", "username", "password", "path", "recursive", "max_entries"},
         "ssh_read_file": {"host", "port", "username", "password", "path", "start_line", "end_line"},
         "ssh_write_file": {"host", "port", "username", "password", "path", "content", "append"},
-        "ssh_make_directory": {"host", "port", "username", "password", "path"},
-        "ssh_remove_path": {"host", "port", "username", "password", "path"},
-        "ssh_path_exists": {"host", "port", "username", "password", "path"},
         "fetch_web_page": {"url", "timeout_seconds", "max_chars"},
         "search_web": {"query", "limit", "timeout_seconds"},
         "list_knowledge_documents": {"keyword", "limit"},
         "read_knowledge_document": {"path", "start_line", "end_line"},
+        "write_knowledge_document": {"path", "content", "append"},
     }
 
     TOOL_PRIMARY_FIELDS = {
@@ -259,11 +261,9 @@ class ToolExecutor:
         "ssh_list_directory": "path",
         "ssh_read_file": "path",
         "ssh_write_file": "content",
-        "ssh_make_directory": "path",
-        "ssh_remove_path": "path",
-        "ssh_path_exists": "path",
         "fetch_web_page": "url",
         "search_web": "query",
+        "write_knowledge_document": "path",
     }
 
     def __init__(
@@ -516,60 +516,6 @@ class ToolExecutor:
             {
                 "type": "function",
                 "function": {
-                    "name": "ssh_make_directory",
-                    "description": "Create a directory on a remote host over SSH/SFTP.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "host": {"type": "string", "description": "Remote host IP or domain."},
-                            "port": {"type": "integer", "description": "SSH port.", "default": 22},
-                            "username": {"type": "string", "description": "SSH username."},
-                            "password": {"type": "string", "description": "SSH password. Leave empty for key-based login."},
-                            "path": {"type": "string", "description": "Remote directory path."},
-                        },
-                        "required": ["host", "username", "path"],
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "ssh_remove_path",
-                    "description": "Remove a file or directory on a remote host over SSH/SFTP.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "host": {"type": "string", "description": "Remote host IP or domain."},
-                            "port": {"type": "integer", "description": "SSH port.", "default": 22},
-                            "username": {"type": "string", "description": "SSH username."},
-                            "password": {"type": "string", "description": "SSH password. Leave empty for key-based login."},
-                            "path": {"type": "string", "description": "Remote path to remove."},
-                        },
-                        "required": ["host", "username", "path"],
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "ssh_path_exists",
-                    "description": "Check whether a path exists on a remote host over SSH/SFTP.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "host": {"type": "string", "description": "Remote host IP or domain."},
-                            "port": {"type": "integer", "description": "SSH port.", "default": 22},
-                            "username": {"type": "string", "description": "SSH username."},
-                            "password": {"type": "string", "description": "SSH password. Leave empty for key-based login."},
-                            "path": {"type": "string", "description": "Remote path to check."},
-                        },
-                        "required": ["host", "username", "path"],
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
                     "name": "fetch_web_page",
                     "description": "Fetch a web page, extract the title and readable text content.",
                     "parameters": {
@@ -633,6 +579,22 @@ class ToolExecutor:
                             },
                         },
                     },
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "write_knowledge_document",
+                            "description": "Write a markdown or text document back into the configured remote knowledge base.",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "path": {"type": "string", "description": "Relative path from the knowledge base root."},
+                                    "content": {"type": "string", "description": "Document text to write."},
+                                    "append": {"type": "boolean", "description": "Append instead of overwrite.", "default": False},
+                                },
+                                "required": ["path", "content"],
+                            },
+                        },
+                    },
                 ]
             )
         return tools
@@ -683,6 +645,8 @@ class ToolExecutor:
                 return self.list_knowledge_documents(**arguments)
             if name == "read_knowledge_document":
                 return self.read_knowledge_document(**arguments)
+            if name == "write_knowledge_document":
+                return self.write_knowledge_document(**arguments)
             return ToolExecutionResult(name=name, ok=False, output=f"Unknown tool: {name}")
         except Exception as exc:
             return ToolExecutionResult(name=name, ok=False, output=f"工具执行失败: {exc}")
@@ -931,6 +895,19 @@ class ToolExecutor:
             return ToolExecutionResult(name="read_knowledge_document", ok=True, output=payload)
         except Exception as exc:
             return ToolExecutionResult(name="read_knowledge_document", ok=False, output=f"文档读取失败: {exc}")
+
+    def write_knowledge_document(self, path: str, content: str, append: bool = False) -> ToolExecutionResult:
+        """写入远程知识库文档。"""
+
+        allowed, reason = self._check_approval("write_knowledge_document", path)
+        if not allowed:
+            return ToolExecutionResult(name="write_knowledge_document", ok=False, output=reason)
+
+        try:
+            payload = self.knowledge_base.write_document(path=path, content=content, append=append)
+            return ToolExecutionResult(name="write_knowledge_document", ok=True, output=json.dumps(payload, ensure_ascii=False, indent=2))
+        except Exception as exc:
+            return ToolExecutionResult(name="write_knowledge_document", ok=False, output=f"文档写入失败: {exc}")
 
     def get_environment(self) -> ToolExecutionResult:
         """汇总当前运行环境、shell 和策略信息。"""
@@ -1629,6 +1606,7 @@ class ToolExecutor:
         """在密钥登录场景下回退到系统 ssh 命令。"""
 
         remote_command = command if not cwd else f"cd {shlex.quote(cwd)} && {command}"
+        target = f"{username}@{host}" if username else host
         try:
             completed = subprocess.run(
                 [
@@ -1637,7 +1615,7 @@ class ToolExecutor:
                     "StrictHostKeyChecking=no",
                     "-p",
                     str(port),
-                    f"{username}@{host}",
+                    target,
                     remote_command,
                 ],
                 capture_output=True,

@@ -1,3 +1,7 @@
+# Copyright (c) 2026 Autoexecra
+# Licensed under the Apache License, Version 2.0.
+# See LICENSE in the project root for license terms.
+
 """远程文档库访问能力。"""
 
 import fnmatch
@@ -73,7 +77,7 @@ class KnowledgeBaseClient:
     def read_document(self, path: str, start_line: int = 1, end_line: int = 200) -> str:
         """读取远程文档的指定行范围。"""
 
-        normalized = path.strip().lstrip("/")
+        normalized = self._normalize_relative_path(path)
         full_path = posixpath.join(self.config.root_dir, normalized)
         start_line = max(1, int(start_line))
         end_line = max(start_line, int(end_line))
@@ -89,6 +93,26 @@ class KnowledgeBaseClient:
         lines = text.splitlines()
         selected = lines[start_line - 1 : end_line]
         return "\n".join(f"{idx}: {line}" for idx, line in enumerate(selected, start=start_line))
+
+    def write_document(self, path: str, content: str, append: bool = False) -> Dict[str, object]:
+        """写入远程知识库文档。"""
+
+        normalized = self._normalize_relative_path(path)
+        if not self._matches_patterns(normalized):
+            raise ValueError(f"知识库只允许写入以下类型: {', '.join(self.config.patterns)}")
+
+        full_path = posixpath.join(self.config.root_dir, normalized)
+        with self._open_sftp() as sftp:
+            self._ensure_remote_dir(sftp, posixpath.dirname(full_path) or self.config.root_dir)
+            mode = "a" if append else "w"
+            with sftp.open(full_path, mode) as remote_file:
+                remote_file.write(content)
+
+        return {
+            "path": normalized,
+            "append": append,
+            "size": len(content.encode("utf-8")),
+        }
 
     def _walk(
         self,
@@ -165,3 +189,31 @@ class KnowledgeBaseClient:
                 self.ssh_client.close()
 
         return _SFTPContext(client)
+
+    def _normalize_relative_path(self, path: str) -> str:
+        """规整并校验知识库相对路径。"""
+
+        normalized = posixpath.normpath(path.strip().lstrip("/"))
+        if normalized in {"", "."}:
+            raise ValueError("知识库路径不能为空")
+        if normalized.startswith("../") or normalized == "..":
+            raise ValueError("知识库路径不能越过根目录")
+        return normalized
+
+    def _matches_patterns(self, relative_path: str) -> bool:
+        """检查文档路径是否匹配允许的模式。"""
+
+        file_name = posixpath.basename(relative_path)
+        return any(fnmatch.fnmatch(file_name, pattern) for pattern in self.config.patterns)
+
+    @staticmethod
+    def _ensure_remote_dir(sftp, remote_dir: str) -> None:
+        """递归创建远端目录。"""
+
+        current = "/"
+        for part in [item for item in remote_dir.split("/") if item]:
+            current = posixpath.join(current, part)
+            try:
+                sftp.stat(current)
+            except OSError:
+                sftp.mkdir(current)

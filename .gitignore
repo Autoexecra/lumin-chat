@@ -43,7 +43,7 @@ Thumbs.db
 *.key
 *.pem
 *.env
-
+reports
 # Node
 node_modules/
 提示词

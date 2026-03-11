@@ -1,5 +1,7 @@
 # lumin-chat RPM 打包与部署说明
 
+本项目以 Apache License 2.0 开源发布，RPM 元数据与安装产物也同步声明 Apache-2.0。
+
 ## 1. 本地构建 RPM
 
 在项目根目录执行：
@@ -21,6 +23,13 @@
 3. 执行 `rpm -Uvh --replacepkgs --force` 安装。
 4. 自动验证 `/etc/lumin-chat/config.json`、`/usr/bin/lumin-chat` 和 `/var/lib/lumin-chat`。
 5. 生成中文测试报告。
+
+RPM 中同时包含：
+
+- 程序目录 `/var/lib/lumin-chat`
+- 系统配置 `/etc/lumin-chat/config.json`
+- 启动脚本 `/usr/bin/lumin-chat`
+- 许可证文件 `LICENSE`
 
 ## 3. 通过构建服务器构建后再部署
 

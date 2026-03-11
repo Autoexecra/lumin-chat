@@ -1,3 +1,7 @@
+# Copyright (c) 2026 Autoexecra
+# Licensed under the Apache License, Version 2.0.
+# See LICENSE in the project root for license terms.
+
 """lumin-chat 命令行解析与交互循环。"""
 
 import argparse
@@ -16,6 +20,7 @@ except ImportError:
 from src.agent import LuminChatAgent
 from src.batch_runner import BatchTaskRunner
 from src.config_loader import load_config
+from src.license_guard import validate_runtime_license
 from src.ui import TerminalUI
 
 
@@ -86,6 +91,11 @@ def main(argv: Optional[list[str]] = None) -> int:
         args.command = "chat"
 
     config = load_config(args.config)
+    license_result = validate_runtime_license(config)
+    if not license_result.ok:
+        TerminalUI(show_thinking=False).show_error(license_result.message)
+        return 2
+
     app_config = config.get("app", {})
     model_level = args.model_level or int(app_config.get("default_model_level", 3))
     approval_mode = args.approval_mode or app_config.get("default_approval_policy", "prompt")

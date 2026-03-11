@@ -1,3 +1,7 @@
+# Copyright (c) 2026 Autoexecra
+# Licensed under the Apache License, Version 2.0.
+# See LICENSE in the project root for license terms.
+
 """通过 SSH 在远端开发板上执行 Docker Ubuntu 非交互测试并生成中文报告。"""
 
 import argparse
@@ -58,7 +62,7 @@ def sanitize_output(text: str) -> str:
 
 def build_test_cases(
     remote_dir: str = "/var/lib/lumin-chat",
-    launcher_path: str = "/usr/bin/lumin-chat",
+    launcher_command: str = "/usr/bin/lumin-chat --help",
     config_path: str = "/etc/lumin-chat/config.json",
 ) -> list[dict[str, str]]:
     """定义本次 Docker Ubuntu 回归测试的命令集合。"""
@@ -78,7 +82,7 @@ def build_test_cases(
         },
         {
             "name": "检查启动脚本帮助信息",
-            "command": f"{launcher_path} --help",
+            "command": launcher_command,
         },
         {
             "name": "执行项目冒烟测试",

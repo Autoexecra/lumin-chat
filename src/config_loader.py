@@ -1,3 +1,7 @@
+# Copyright (c) 2026 Autoexecra
+# Licensed under the Apache License, Version 2.0.
+# See LICENSE in the project root for license terms.
+
 """配置加载与默认值处理。"""
 
 import copy
@@ -89,6 +93,13 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "password": "",
         "root_dir": "",
         "patterns": ["*.md", "*.txt"],
+    },
+    "license": {
+        "enabled": False,
+        "subject": "lumin-chat",
+        "license_file": "/etc/lumin-chat/license.json",
+        "secret_env": "LUMIN_CHAT_LICENSE_SECRET",
+        "secret": "",
     },
     "deploy": {
         "host": "",

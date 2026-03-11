@@ -1,3 +1,7 @@
+# Copyright (c) 2026 Autoexecra
+# Licensed under the Apache License, Version 2.0.
+# See LICENSE in the project root for license terms.
+
 """系统提示词构建逻辑。"""
 
 from textwrap import dedent
@@ -17,7 +21,31 @@ def build_system_prompt(config: dict, model_level: int, max_model_level: int) ->
     rule_label = "禁止命令片段" if policy_mode == "blacklist" else "允许命令列表"
     kb = config.get("knowledge_base", {})
     kb_block = ""
+    tool_lines = [
+        "run_shell_command: 执行终端命令",
+        "change_directory: 切换工作目录",
+        "list_directory: 查看目录结构",
+        "search_text: 搜索文本",
+        "read_file: 读取文件片段",
+        "write_file: 写入文件",
+        "get_environment: 获取当前运行环境",
+        "ssh_execute_command: 通过 SSH 在远端主机执行命令",
+        "ssh_upload_file: 通过 SFTP 上传本地文件到远端",
+        "ssh_download_file: 通过 SFTP 下载远端文件到本地",
+        "ssh_list_directory: 查看远端目录结构",
+        "ssh_read_file: 读取远端文本文件片段",
+        "ssh_write_file: 写入远端文本文件",
+        "fetch_web_page: 抓取网页正文与标题",
+        "search_web: 执行公开网页搜索",
+    ]
     if kb.get("enabled"):
+        tool_lines.extend(
+            [
+                "list_knowledge_documents: 查看远程文档库中的文档名称",
+                "read_knowledge_document: 读取远程文档库文档内容",
+                "write_knowledge_document: 将成功经验写入远程知识库文档",
+            ]
+        )
         kb_block = dedent(
             f"""
 
@@ -26,12 +54,14 @@ def build_system_prompt(config: dict, model_level: int, max_model_level: int) ->
             - 根目录: {kb.get('root_dir')}
             - 每次执行任务前，优先调用 list_knowledge_documents 查看文档名称列表，从文档名称判断是否与任务强相关或对任务有指导性，如果有调用 read_knowledge_document 读取内容作为参考。
             - 先从文档名称判断相关性，避免无差别读取大量文件。最多读取5份文档，相关性强的优先。
+            - 当复杂功能验证成功且具备复用价值时，可以调用 write_knowledge_document 记录关键步骤。
             """
         ).rstrip()
+    tool_block = "\n".join(f"        - {item}" for item in tool_lines)
 
     return dedent(
         f"""
-        你是 lumin-chat，一个运行在 Linux 终端中的高级执行代理，目标是在工作流层面逼近 GitHub Copilot Terminal 的能力，同时保持更稳定的工程行为。
+        你是 lumin-chat，一个运行在 Linux 终端中的高级执行代理，目标是在工作流层面优于 GitHub Copilot Terminal 的能力，同时保持更稳定的工程行为。
 
         当前模型级别: level {model_level}/{max_model_level}
 
@@ -53,26 +83,7 @@ def build_system_prompt(config: dict, model_level: int, max_model_level: int) ->
         扩展规则：
         {extension_rules_text if extension_rules else '无'}
         你可以使用的工具包括:
-        - run_shell_command: 执行终端命令
-        - change_directory: 切换工作目录
-        - list_directory: 查看目录结构
-        - search_text: 搜索文本
-        - read_file: 读取文件片段
-        - write_file: 写入文件
-        - get_environment: 获取当前运行环境
-        - ssh_execute_command: 通过 SSH 在远端主机执行命令
-        - ssh_upload_file: 通过 SFTP 上传本地文件到远端
-        - ssh_download_file: 通过 SFTP 下载远端文件到本地
-        - ssh_list_directory: 查看远端目录结构
-        - ssh_read_file: 读取远端文本文件片段
-        - ssh_write_file: 写入远端文本文件
-        - ssh_make_directory: 创建远端目录
-        - ssh_remove_path: 删除远端文件或目录
-        - ssh_path_exists: 检查远端路径是否存在
-        - fetch_web_page: 抓取网页正文与标题
-        - search_web: 执行公开网页搜索
-        - list_knowledge_documents: 查看远程文档库中的文档名称
-        - read_knowledge_document: 读取远程文档库文档内容
+    {tool_block}
 
         当前命令策略:
         - 模式: {policy_mode}

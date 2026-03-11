@@ -1,3 +1,7 @@
+# Copyright (c) 2026 Autoexecra
+# Licensed under the Apache License, Version 2.0.
+# See LICENSE in the project root for license terms.
+
 """构建 lumin-chat RPM 包。"""
 
 from __future__ import annotations
@@ -23,7 +27,7 @@ def copy_project_files(project_root: Path, stage_root: Path) -> None:
         shutil.rmtree(stage_root)
     stage_root.mkdir(parents=True, exist_ok=True)
 
-    for file_name in ["main.py", "config.json", "requirements.txt", "deploy.py", "README.md"]:
+    for file_name in ["main.py", "config.json", "requirements.txt", "deploy.py", "README.md", "LICENSE"]:
         shutil.copy2(project_root / file_name, stage_root / file_name)
 
     for folder_name in ["src", "docs", "scripts"]:
@@ -71,7 +75,7 @@ def build_spec(version: str, release: str) -> str:
 Version:        {version}
 Release:        {release}%{{?dist}}
 Summary:        Lumin Chat Linux 终端代理
-License:        Proprietary
+License:        Apache-2.0
 BuildArch:      noarch
 Requires:       /bin/bash, python3
 Source0:        %{{name}}-%{{version}}.tar.gz
@@ -170,13 +174,14 @@ else
     mkdir -p "$APP_DIR/vendor"
     python3 -m pip install --target "$APP_DIR/vendor" -r "$APP_DIR/requirements.txt"
 fi
-if [[ ! -f "$CONFIG_PATH" ]]; then
+if [ ! -f "$CONFIG_PATH" ]; then
     mkdir -p "$(dirname "$CONFIG_PATH")"
     cp "$APP_DIR/config.json" "$CONFIG_PATH"
 fi
 
 %files
 %defattr(-,root,root,-)
+%license LICENSE
 {APP_DIR}
 %dir {CONFIG_DIR}
 %config(noreplace) {CONFIG_PATH}
