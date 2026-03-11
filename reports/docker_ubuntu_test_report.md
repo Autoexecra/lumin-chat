@@ -2,7 +2,7 @@
 
 ## 1. 测试环境
 
-- 生成时间: 2026-03-11 13:34:29
+- 生成时间: 2026-03-11 16:04:04
 - 目标主机: yanggan@tl3588:22
 - 远端目录: /var/lib/lumin-chat
 - 通过情况: 9/9
@@ -132,6 +132,24 @@ cd /var/lib/lumin-chat && if [ -x .venv/bin/python ]; then .venv/bin/python scri
 
 标准输出：
 ```text
+╭────────────────────────── tool> run_shell_command ───────────────────────────╮
+│ {                                                                            │
+│   "command": "printf recovered"                                              │
+│ }                                                                            │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭───────────────────────── result> run_shell_command ──────────────────────────╮
+│ {                                                                            │
+│   "command": "printf recovered",                                             │
+│   "cwd": "/var/lib/lumin-chat",                                              │
+│   "exit_code": 0,                                                            │
+│   "stdout": "recovered",                                                     │
+│   "stderr": "",                                                              │
+│   "persistent_shell": true                                                   │
+│ }                                                                            │
+╰──────────────────────────────────────────────────────────────────────────────╯
+模型返回空响应，正在自动重试。
+
+assistant> 已从空响应中自动恢复
 smoke_test: ok
 ```
 

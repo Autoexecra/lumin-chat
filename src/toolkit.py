@@ -85,6 +85,8 @@ class PersistentShellSession:
         self._send(
             "unset PROMPT_COMMAND\n"
             "export PS1=''\n"
+            "export PS2=''\n"
+            "bind 'set enable-bracketed-paste off' >/dev/null 2>&1 || true\n"
             "stty -echo\n"
             f"printf '\n__LUMIN_CHAT_READY__{ready_token}\\x1f%s\\n' \"$PWD\"\n"
         )
@@ -712,7 +714,7 @@ class ToolExecutor:
                     "command": command,
                     "cwd": updated_cwd,
                     "exit_code": exit_code,
-                    "stdout": self._truncate(stdout),
+                    "stdout": self._truncate(self._sanitize_shell_output(stdout)),
                     "stderr": "",
                     "persistent_shell": True,
                 }
@@ -1593,6 +1595,16 @@ class ToolExecutor:
         if len(text) <= limit:
             return text
         return text[:limit] + "\n...<truncated>..."
+
+    @staticmethod
+    def _sanitize_shell_output(text: str) -> str:
+        """清理 PTY 回显中的控制字符和空提示符残留。"""
+
+        cleaned = text.replace("\r", "")
+        cleaned = re.sub(r"\x1b\[\?2004[hl]", "", cleaned)
+        cleaned = re.sub(r"\n>\s*$", "", cleaned)
+        cleaned = re.sub(r"^>\s*$", "", cleaned, flags=re.MULTILINE)
+        return cleaned.strip()
 
     def _run_ssh_command_via_cli(
         self,

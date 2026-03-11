@@ -21,7 +21,7 @@ from src.license_guard import generate_license_document, validate_license_docume
 from src.memory_store import MemoryStore
 from src.agent import LuminChatAgent
 from src.batch_runner import BatchTaskRunner
-from src.models import ToolCall
+from src.models import LLMResponse, ToolCall
 from src.toolkit import ToolExecutor
 from src.ui import TerminalUI
 
@@ -137,6 +137,34 @@ def main() -> int:
     switched_back = agent.switch_session(original_session_id)
     require(switched_back == original_session_id, "switch_session should return original session id")
     require("tl3588" in agent.memory_summary("tl3588 部署"), "switched session should recover previous memory")
+
+    class FakeAI:
+        def __init__(self):
+            self.calls = 0
+
+        def call(self, messages, tools=None, stream=False, on_reasoning=None, on_content=None):
+            del messages, tools, stream, on_reasoning, on_content
+            self.calls += 1
+            if self.calls == 1:
+                return LLMResponse(
+                    success=True,
+                    tool_calls=[ToolCall(id="blank-tool", name="run_shell_command", arguments={"command": "printf recovered"})],
+                )
+            if self.calls in {2, 3}:
+                return LLMResponse(success=True, content="", tool_calls=[])
+            return LLMResponse(success=True, content="已从空响应中自动恢复", tool_calls=[])
+
+    stalled_agent = LuminChatAgent(
+        config=runtime_config,
+        ui=TerminalUI(show_thinking=False),
+        model_level=1,
+        approval_policy="auto",
+        workdir=os.getcwd(),
+    )
+    stalled_agent.ai = FakeAI()
+    stalled_result = stalled_agent.run_with_trace("执行一个会触发空响应恢复的任务")
+    require(stalled_result["success"] is True, f"empty response recovery should succeed: {stalled_result}")
+    require("自动恢复" in stalled_result["content"], f"empty response recovery content mismatch: {stalled_result}")
 
     permission_result = executor.execute(
         ToolCall(

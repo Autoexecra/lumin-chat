@@ -43,9 +43,11 @@ class LuminChatAgent:
         self.repeat_command_threshold = int(self.escalation_config.get("repeat_command_threshold", 3))
         self.consecutive_error_threshold = int(self.escalation_config.get("consecutive_error_threshold", 4))
         self.upgrade_on_llm_error = bool(self.escalation_config.get("upgrade_on_llm_error", True))
+        self.empty_response_retry_limit = int(self.escalation_config.get("empty_response_retry_limit", 2))
         self.last_tool_signature = ""
         self.repeated_tool_count = 0
         self.consecutive_tool_failures = 0
+        self.consecutive_empty_responses = 0
         base_dir = Path(workdir or os.getcwd()).resolve()
         app_config = config.get("app", {})
         session_dir = self._resolve_state_dir(base_dir, app_config.get("session_dir", "~/.lumin-chat/sessions"))
@@ -252,9 +254,28 @@ class LuminChatAgent:
             if response.content:
                 final_content = response.content
 
+            if response.tool_calls or (response.content or "").strip():
+                self.consecutive_empty_responses = 0
+
             if not response.tool_calls:
                 if used_tools and not (response.content or "").strip():
                     final_content = self._request_final_summary() or final_content
+                    if final_content.strip():
+                        self.consecutive_empty_responses = 0
+                if not final_content.strip() and not self._retry_after_empty_response(used_tools=used_tools):
+                    self.session.cwd = self.executor.cwd
+                    self._remember_turn(user_input, final_content)
+                    self._save_session()
+                    return {
+                        "success": False,
+                        "content": final_content,
+                        "error": "模型连续返回空响应，任务已停止。",
+                        "tool_records": tool_records,
+                        "session_id": self.session.session_id,
+                        "cwd": self.executor.cwd,
+                    }
+                if not final_content.strip():
+                    continue
                 self.session.cwd = self.executor.cwd
                 self._remember_turn(user_input, final_content)
                 self._save_session()
@@ -361,6 +382,31 @@ class LuminChatAgent:
             self.session.messages.append({"role": "assistant", "content": content})
         return content
 
+    def _retry_after_empty_response(self, used_tools: bool) -> bool:
+        """在模型返回空响应时自动插入约束并重试，避免静默停住。"""
+
+        self.consecutive_empty_responses += 1
+        self.ui.show_warning("模型返回空响应，正在自动重试。")
+        self.session.messages.append(
+            {
+                "role": "system",
+                "content": (
+                    "上一轮返回了空响应。下一轮必须二选一："
+                    "1. 给出明确、完整的最终答复；"
+                    "2. 调用必要工具继续执行。"
+                    "禁止输出空白内容。"
+                ),
+            }
+        )
+        if self.consecutive_empty_responses >= self.empty_response_retry_limit:
+            reason = "工具执行后模型连续返回空响应" if used_tools else "模型连续返回空响应"
+            if self._upgrade_model(reason):
+                self.consecutive_empty_responses = 0
+                return True
+            self.ui.show_error("模型连续返回空响应，无法继续执行。")
+            return False
+        return True
+
     def _refresh_system_prompt(self) -> None:
         """按当前配置刷新系统提示词。"""
 
@@ -383,6 +429,7 @@ class LuminChatAgent:
         self.last_tool_signature = ""
         self.repeated_tool_count = 0
         self.consecutive_tool_failures = 0
+        self.consecutive_empty_responses = 0
         self.session.messages.append(
             {
                 "role": "system",
