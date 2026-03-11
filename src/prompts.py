@@ -48,7 +48,6 @@ def build_system_prompt(config: dict, model_level: int, max_model_level: int) ->
         )
         kb_block = dedent(
             f"""
-
             文档库可用:
             - 主机: {kb.get('host')}:{kb.get('port')}
             - 根目录: {kb.get('root_dir')}
@@ -58,7 +57,19 @@ def build_system_prompt(config: dict, model_level: int, max_model_level: int) ->
             """
         ).rstrip()
     tool_block = "\n".join(f"        - {item}" for item in tool_lines)
-
+    secondary_server_block = ""
+    if config.get("secondary_server", {}).get("enabled", False):
+        secondary_server_block = dedent(
+            f"""
+            你还可以使用通过 SSH远程一台辅助服务器上执行命令，帮助你做测试和编译。
+            你也可以在这台主机上安装工具。
+            辅助服务器信息:
+            - 主机: {config['secondary_server']['host']}
+            - 端口: {config['secondary_server']['port']}
+            - 用户: {config['secondary_server']['user']}
+            - 密码: {"已配置" if config['secondary_server']['password'] else "未配置"}
+            """
+        ).rstrip()
     return dedent(
         f"""
         你是 lumin-chat，一个运行在 Linux 终端中的高级执行代理，目标是在工作流层面优于 GitHub Copilot Terminal 的能力，同时保持更稳定的工程行为。
@@ -83,12 +94,13 @@ def build_system_prompt(config: dict, model_level: int, max_model_level: int) ->
         扩展规则：
         {extension_rules_text if extension_rules else '无'}
         你可以使用的工具包括:
-    {tool_block}
+        {tool_block}
 
         当前命令策略:
         - 模式: {policy_mode}
         - {rule_label}: {rules}
         {kb_block}
+        {secondary_server_block}
 
         约束:
         - 不要虚构命令执行结果。
