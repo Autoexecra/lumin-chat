@@ -59,7 +59,7 @@ class WebToolClient:
 
     timeout_seconds: int = 60
 
-    def fetch_page(self, url: str, max_chars: int = 12000) -> Dict[str, object]:
+    def fetch_page(self, url: str, max_chars: int = 120000) -> Dict[str, object]:
         """抓取网页并提取标题与正文摘要。"""
 
         with self._client() as client:

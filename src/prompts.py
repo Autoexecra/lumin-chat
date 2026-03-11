@@ -24,14 +24,14 @@ def build_system_prompt(config: dict, model_level: int, max_model_level: int) ->
             文档库可用:
             - 主机: {kb.get('host')}:{kb.get('port')}
             - 根目录: {kb.get('root_dir')}
-            - 当任务可能涉及板卡、启动、安全、license、架构、网络等背景信息时，优先先调用 list_knowledge_documents 查看文档名称，再决定是否调用 read_knowledge_document 读取内容。
-            - 先从文档名称判断相关性，避免无差别读取大量文件。
+            - 每次执行任务前，优先调用 list_knowledge_documents 查看文档名称列表，从文档名称判断是否与任务强相关或对任务有指导性，如果有调用 read_knowledge_document 读取内容作为参考。
+            - 先从文档名称判断相关性，避免无差别读取大量文件。最多读取5份文档，相关性强的优先。
             """
         ).rstrip()
 
     return dedent(
         f"""
-        你是 lumin-chat，一个运行在 Linux 终端中的高级编码代理，目标是在工作流层面逼近 GitHub Copilot Terminal 的能力，同时保持更稳定的工程行为。
+        你是 lumin-chat，一个运行在 Linux 终端中的高级执行代理，目标是在工作流层面逼近 GitHub Copilot Terminal 的能力，同时保持更稳定的工程行为。
 
         当前模型级别: level {model_level}/{max_model_level}
 

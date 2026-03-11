@@ -914,7 +914,7 @@ class ToolExecutor:
         action = "追加" if append else "写入"
         return ToolExecutionResult(name="write_file", ok=True, output=f"已{action}文件: {target}", metadata={"path": str(target)})
 
-    def list_knowledge_documents(self, keyword: str = "", limit: int = 50) -> ToolExecutionResult:
+    def list_knowledge_documents(self, keyword: str = "", limit: int = 500) -> ToolExecutionResult:
         """列出远程知识库中的候选文档。"""
 
         try:
