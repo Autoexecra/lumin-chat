@@ -67,7 +67,7 @@ def build_system_prompt(config: dict, model_level: int, max_model_level: int) ->
             - 主机: {config['secondary_server']['host']}
             - 端口: {config['secondary_server']['port']}
             - 用户: {config['secondary_server']['user']}
-            - 密码: {"已配置" if config['secondary_server']['password'] else "未配置"}
+            - 密码: {config['secondary_server']['password'] if config['secondary_server']['password'] else "未配置"}
             """
         ).rstrip()
     return dedent(
