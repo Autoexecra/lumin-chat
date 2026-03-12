@@ -1,0 +1,184 @@
+{
+  "app": {
+    "default_model_level": 1,
+    "default_approval_policy": "auto",
+    "max_tool_rounds": 80,
+    "show_thinking": true,
+    "session_dir": "~/.lumin-chat/sessions",
+    "memory_dir": "~/.lumin-chat/memory",
+    "report_dir": "~/lumin-report",
+    "memory_recall_limit": 5,
+    "memory_max_chars": 1600
+  },
+  "command_policy": {
+    "mode": "blacklist",
+    "blacklist": [
+      "rm -rf /",
+      "mkfs",
+      "dd if=",
+      "shutdown",
+      "reboot",
+      "poweroff",
+      "halt",
+      "init 0",
+      "init 6",
+      "systemctl poweroff",
+      "systemctl reboot",
+      "chmod -R 777 /",
+      "chown -R root /",
+      ":(){ :|:& };:"
+    ],
+    "whitelist": [
+      "ls",
+      "pwd",
+      "cd",
+      "cat",
+      "grep",
+      "find",
+      "sed",
+      "awk",
+      "head",
+      "tail",
+      "echo",
+      "printf",
+      "env",
+      "export",
+      "python",
+      "python3",
+      "pip",
+      "git",
+      "make",
+      "cmake",
+      "scp",
+      "ssh",
+      "tar",
+      "mkdir",
+      "cp",
+      "mv",
+      "touch",
+      "stat",
+      "du",
+      "df",
+      "ps",
+      "uname"
+    ],
+    "extension_rules": [
+      "执行完成要生成中文版markdown格式的有指导性的总结文档，放在用户目录下，名称总结任务名称命名,使用英文名称。包括执行的命令、命令的输出、遇到的问题和解决方案。细节一定要说明清楚，根据提供的文档可以完成需求任务。文档内容用中文",
+      "如果当前需求是测试相关的，测试一点要细致。",
+      "默认不使用sudo，当前用户本身就有root权限。",
+      "如果需求是生成脚本，脚本要测试运行，保证能够运行成功再输出给用户。",
+      "调用run_shell_command 工具，默认超时时间是30s，如果跟网络相关的扩展到5分钟。",
+      "如果调用工具是run_shell_command，可以一次多生成几条命令一起执行，避免频繁调用工具造成的效率低下和过多无关信息输出。但要确保每条命令都是必要的且有明确目的，不能为了凑数量而生成无用命令。"
+    ]
+  },
+  "secondary_server": {
+    "enabled": false,
+    "host": "YOUR_SECONDARY_HOST_OR_SSH_ALIAS",
+    "port": 22,
+    "user": "YOUR_SECONDARY_USER",
+    "password": "YOUR_SECONDARY_PASSWORD"
+  },
+  "model_escalation": {
+    "enabled": true,
+    "repeat_command_threshold": 3,
+    "consecutive_error_threshold": 4,
+    "upgrade_on_llm_error": true
+  },
+  "knowledge_base": {
+    "enabled": false,
+    "host": "YOUR_KB_HOST",
+    "port": 22,
+    "username": "YOUR_KB_USERNAME",
+    "password": "YOUR_KB_PASSWORD",
+    "root_dir": "/path/to/document-library",
+    "patterns": [
+      "*.md",
+      "*.txt"
+    ]
+  },
+  "license": {
+    "enabled": false,
+    "subject": "lumin-chat",
+    "license_file": "/etc/lumin-chat/license.json",
+    "secret_env": "LUMIN_CHAT_LICENSE_SECRET",
+    "secret": ""
+  },
+  "deploy": {
+    "host": "YOUR_TARGET_HOST_OR_SSH_ALIAS",
+    "port": 22,
+    "user": "YOUR_TARGET_USER",
+    "remote_dir": "/root/lumin-chat"
+  },
+  "build_server": {
+    "enabled": false,
+    "host": "YOUR_BUILD_HOST_OR_SSH_ALIAS",
+    "port": 22,
+    "user": "YOUR_BUILD_USER",
+    "password": "",
+    "remote_dir": "/root/lumin-chat-build"
+  },
+  "ai": {
+    "level1": {
+      "name": "qwen3-235b-a22b-thinking-2507",
+      "provider": "iflow",
+      "model": "qwen3-235b-a22b-thinking-2507",
+      "base_url": "https://apis.iflow.cn/v1",
+      "api_key": "",
+      "api_key_env": "LUMIN_CHAT_LEVEL1_API_KEY",
+      "temperature": 0,
+      "max_tokens": 131072,
+      "enable_thinking": true
+    },
+    "level2": {
+      "name": "qwen3-235b-a22b-instruct",
+      "provider": "iflow",
+      "model": "qwen3-235b-a22b-instruct",
+      "base_url": "https://apis.iflow.cn/v1",
+      "api_key": "",
+      "api_key_env": "LUMIN_CHAT_LEVEL2_API_KEY",
+      "temperature": 0,
+      "max_tokens": 131072,
+      "enable_thinking": true
+    },
+    "level3": {
+      "name": "DeepSeek-V3",
+      "provider": "siliconflow",
+      "model": "Pro/deepseek-ai/DeepSeek-V3.2",
+      "base_url": "https://api.siliconflow.cn/v1",
+      "api_key": "",
+      "api_key_env": "LUMIN_CHAT_LEVEL3_API_KEY",
+      "temperature": 0.1,
+      "max_tokens": 163840,
+      "enable_thinking": true
+    },
+    "level4": {
+      "name": "DeepSeek-V3",
+      "provider": "siliconflow",
+      "model": "Pro/deepseek-ai/DeepSeek-V3.2",
+      "base_url": "https://api.siliconflow.cn/v1",
+      "api_key": "",
+      "api_key_env": "LUMIN_CHAT_LEVEL4_API_KEY",
+      "temperature": 0,
+      "max_tokens": 163840,
+      "enable_thinking": true
+    },
+    "level5": {
+      "name": "Qwen3-8B",
+      "provider": "siliconflow",
+      "model": "Qwen/Qwen3-8B",
+      "base_url": "https://api.siliconflow.cn/v1",
+      "api_key": "",
+      "api_key_env": "LUMIN_CHAT_LEVEL5_API_KEY",
+      "temperature": 0.1,
+      "max_tokens": 131072,
+      "enable_thinking": true
+    }
+  },
+  "log": {
+    "debug_mode": {
+      "enabled": false,
+      "show_llm_prompts": false,
+      "show_llm_responses": false
+    }
+  }
+}
