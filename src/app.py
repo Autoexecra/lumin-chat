@@ -33,7 +33,7 @@ def ensure_utf8_stdio() -> None:
             reconfigure(encoding="utf-8", errors="replace")
 
 
-def build_prompt_session(workdir: str) -> Optional["PromptSession[str]"]:
+def build_prompt_session(workdir: str) -> Optional[object]:
     """构造具备历史记录的交互输入会话。"""
 
     if PromptSession is None or FileHistory is None:
@@ -190,6 +190,9 @@ def _handle_slash_command(raw: str, agent: LuminChatAgent, ui: TerminalUI) -> bo
 /session            - 显示当前会话路径
 /shell              - 显示 shell 状态
 /memory [query]     - 显示当前会话记忆摘要（可选 query）
+/workspace          - 显示当前工作区摘要
+/git-status         - 显示当前 git 状态
+/git-diff [path]    - 显示当前 git diff（可选文件路径）
 /restart-shell      - 重启 Shell 会话
 """
         )
@@ -253,6 +256,15 @@ def _handle_slash_command(raw: str, agent: LuminChatAgent, ui: TerminalUI) -> bo
         return True
     if command == "/memory":
         ui.show_info(agent.memory_summary(argument))
+        return True
+    if command == "/workspace":
+        ui.show_info(agent.workspace_overview())
+        return True
+    if command == "/git-status":
+        ui.show_info(agent.git_status())
+        return True
+    if command == "/git-diff":
+        ui.show_info(agent.git_diff(argument.strip()))
         return True
     if command == "/restart-shell":
         agent.restart_shell()

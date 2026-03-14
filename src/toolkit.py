@@ -15,11 +15,13 @@ import os
 import platform
 import re
 import shlex
+import shutil
 import socket
 import subprocess
 import sys
 import time
 import uuid
+from difflib import unified_diff
 from codecs import decode as codecs_decode
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
@@ -235,15 +237,24 @@ class ToolExecutor:
         "change_directory": {"path"},
         "list_directory": {"path", "recursive", "max_entries"},
         "search_text": {"pattern", "path", "glob", "case_sensitive", "max_matches"},
+        "find_files": {"pattern", "path", "max_results", "include_hidden"},
         "read_file": {"path", "start_line", "end_line"},
         "write_file": {"path", "content", "append"},
+        "replace_in_file": {"path", "search_text", "replace_text", "replace_all"},
+        "insert_in_file": {"path", "content", "line_number"},
         "get_environment": set(),
+        "get_workspace_overview": {"path", "max_depth", "max_entries"},
+        "git_status": {"repo_path", "include_untracked"},
+        "git_diff": {"repo_path", "pathspec", "cached", "max_chars"},
         "ssh_execute_command": {"host", "port", "username", "password", "command", "timeout_seconds", "cwd"},
         "ssh_upload_file": {"host", "port", "username", "password", "local_path", "remote_path"},
         "ssh_download_file": {"host", "port", "username", "password", "remote_path", "local_path"},
         "ssh_list_directory": {"host", "port", "username", "password", "path", "recursive", "max_entries"},
         "ssh_read_file": {"host", "port", "username", "password", "path", "start_line", "end_line"},
         "ssh_write_file": {"host", "port", "username", "password", "path", "content", "append"},
+        "ssh_make_directory": {"host", "port", "username", "password", "path"},
+        "ssh_remove_path": {"host", "port", "username", "password", "path"},
+        "ssh_path_exists": {"host", "port", "username", "password", "path"},
         "fetch_web_page": {"url", "timeout_seconds", "max_chars"},
         "search_web": {"query", "limit", "timeout_seconds"},
         "list_knowledge_documents": {"keyword", "limit"},
@@ -254,8 +265,13 @@ class ToolExecutor:
     TOOL_PRIMARY_FIELDS = {
         "run_shell_command": "command",
         "change_directory": "path",
+        "find_files": "pattern",
         "read_file": "path",
         "write_file": "content",
+        "replace_in_file": "search_text",
+        "insert_in_file": "content",
+        "git_status": "repo_path",
+        "git_diff": "pathspec",
         "read_knowledge_document": "path",
         "ssh_execute_command": "command",
         "ssh_upload_file": "remote_path",
@@ -357,6 +373,22 @@ class ToolExecutor:
             {
                 "type": "function",
                 "function": {
+                    "name": "find_files",
+                    "description": "Find files by glob pattern, similar to rg --files plus pattern filtering.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "pattern": {"type": "string", "description": "Glob pattern such as src/**/*.py.", "default": "**/*"},
+                            "path": {"type": "string", "description": "Base directory to search from.", "default": "."},
+                            "max_results": {"type": "integer", "description": "Maximum number of results.", "default": 200},
+                            "include_hidden": {"type": "boolean", "description": "Whether to include dotfiles and dot-directories.", "default": False}
+                        }
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
                     "name": "read_file",
                     "description": "Read lines from a text file.",
                     "parameters": {
@@ -389,6 +421,39 @@ class ToolExecutor:
             {
                 "type": "function",
                 "function": {
+                    "name": "replace_in_file",
+                    "description": "Precisely replace text in a file without rewriting unrelated content.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "path": {"type": "string", "description": "File path to edit."},
+                            "search_text": {"type": "string", "description": "Exact text to find."},
+                            "replace_text": {"type": "string", "description": "Replacement text."},
+                            "replace_all": {"type": "boolean", "description": "Replace all occurrences instead of exactly one.", "default": False}
+                        },
+                        "required": ["path", "search_text", "replace_text"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "insert_in_file",
+                    "description": "Insert text into a file at a specific 1-based line number.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "path": {"type": "string", "description": "File path to edit."},
+                            "content": {"type": "string", "description": "Text to insert."},
+                            "line_number": {"type": "integer", "description": "1-based insertion line. len+1 appends to the end.", "default": 1}
+                        },
+                        "required": ["path", "content"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
                     "name": "get_environment",
                     "description": "Get current runtime environment details.",
                     "parameters": {
@@ -396,6 +461,51 @@ class ToolExecutor:
                         "properties": {},
                     },
                 },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_workspace_overview",
+                    "description": "Summarize the current workspace structure, git state and major file types.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "path": {"type": "string", "description": "Workspace path to inspect.", "default": "."},
+                            "max_depth": {"type": "integer", "description": "Maximum directory depth to summarize.", "default": 2},
+                            "max_entries": {"type": "integer", "description": "Maximum number of files to sample.", "default": 80}
+                        }
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "git_status",
+                    "description": "Read the current git branch and changed files for the workspace.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "repo_path": {"type": "string", "description": "Path inside the git repository.", "default": "."},
+                            "include_untracked": {"type": "boolean", "description": "Whether to include untracked files.", "default": True}
+                        }
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "git_diff",
+                    "description": "Read git diff text for unstaged or staged changes.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "repo_path": {"type": "string", "description": "Path inside the git repository.", "default": "."},
+                            "pathspec": {"type": "string", "description": "Optional file or glob pathspec to limit the diff."},
+                            "cached": {"type": "boolean", "description": "Read staged diff instead of unstaged diff.", "default": False},
+                            "max_chars": {"type": "integer", "description": "Maximum diff characters to return.", "default": 12000}
+                        }
+                    }
+                }
             },
             {
                 "type": "function",
@@ -518,6 +628,60 @@ class ToolExecutor:
             {
                 "type": "function",
                 "function": {
+                    "name": "ssh_make_directory",
+                    "description": "Create a directory on a remote host over SSH/SFTP.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "host": {"type": "string", "description": "Remote host IP or domain."},
+                            "port": {"type": "integer", "description": "SSH port.", "default": 22},
+                            "username": {"type": "string", "description": "SSH username."},
+                            "password": {"type": "string", "description": "SSH password. Leave empty for key-based login."},
+                            "path": {"type": "string", "description": "Remote directory path."}
+                        },
+                        "required": ["host", "username", "path"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "ssh_remove_path",
+                    "description": "Remove a remote file or directory over SSH/SFTP.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "host": {"type": "string", "description": "Remote host IP or domain."},
+                            "port": {"type": "integer", "description": "SSH port.", "default": 22},
+                            "username": {"type": "string", "description": "SSH username."},
+                            "password": {"type": "string", "description": "SSH password. Leave empty for key-based login."},
+                            "path": {"type": "string", "description": "Remote file or directory path."}
+                        },
+                        "required": ["host", "username", "path"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "ssh_path_exists",
+                    "description": "Check whether a remote path exists over SSH/SFTP.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "host": {"type": "string", "description": "Remote host IP or domain."},
+                            "port": {"type": "integer", "description": "SSH port.", "default": 22},
+                            "username": {"type": "string", "description": "SSH username."},
+                            "password": {"type": "string", "description": "SSH password. Leave empty for key-based login."},
+                            "path": {"type": "string", "description": "Remote file or directory path."}
+                        },
+                        "required": ["host", "username", "path"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
                     "name": "fetch_web_page",
                     "description": "Fetch a web page, extract the title and readable text content.",
                     "parameters": {
@@ -615,12 +779,24 @@ class ToolExecutor:
                 return self.list_directory(**arguments)
             if name == "search_text":
                 return self.search_text(**arguments)
+            if name == "find_files":
+                return self.find_files(**arguments)
             if name == "read_file":
                 return self.read_file(**arguments)
             if name == "write_file":
                 return self.write_file(**arguments)
+            if name == "replace_in_file":
+                return self.replace_in_file(**arguments)
+            if name == "insert_in_file":
+                return self.insert_in_file(**arguments)
             if name == "get_environment":
                 return self.get_environment()
+            if name == "get_workspace_overview":
+                return self.get_workspace_overview(**arguments)
+            if name == "git_status":
+                return self.git_status(**arguments)
+            if name == "git_diff":
+                return self.git_diff(**arguments)
             if name == "ssh_execute_command":
                 return self.ssh_execute_command(**arguments)
             if name == "ssh_upload_file":
@@ -842,6 +1018,44 @@ class ToolExecutor:
 
         return ToolExecutionResult(name="search_text", ok=True, output=json.dumps(matches, ensure_ascii=False, indent=2))
 
+    def find_files(
+        self,
+        pattern: str = "**/*",
+        path: str = ".",
+        max_results: int = 200,
+        include_hidden: bool = False,
+    ) -> ToolExecutionResult:
+        """按 glob 模式查找文件，便于代码库导航。"""
+
+        base = Path(self._resolve_path(path))
+        if not base.exists():
+            return ToolExecutionResult(name="find_files", ok=False, output=f"路径不存在: {base}")
+        if base.is_file():
+            items = [base]
+        else:
+            try:
+                items = list(base.glob(pattern or "**/*"))
+            except ValueError as exc:
+                return ToolExecutionResult(name="find_files", ok=False, output=f"glob 模式无效: {exc}")
+
+        results = []
+        for item in items:
+            if len(results) >= max(1, min(int(max_results), 1000)):
+                break
+            if not include_hidden and self._is_hidden_path(item, base):
+                continue
+            if item == base and base.is_dir():
+                continue
+            results.append(
+                {
+                    "path": str(item),
+                    "relative_path": str(item.relative_to(base)) if item != base and item.is_relative_to(base) else item.name,
+                    "type": "dir" if item.is_dir() else "file",
+                    "size": item.stat().st_size if item.is_file() else None,
+                }
+            )
+        return ToolExecutionResult(name="find_files", ok=True, output=json.dumps(results, ensure_ascii=False, indent=2))
+
     def read_file(self, path: str, start_line: int = 1, end_line: int = 200) -> ToolExecutionResult:
         """读取文本文件指定行范围。"""
 
@@ -879,6 +1093,77 @@ class ToolExecutor:
             return ToolExecutionResult(name="write_file", ok=False, output=f"写文件失败: {target} ({exc})")
         action = "追加" if append else "写入"
         return ToolExecutionResult(name="write_file", ok=True, output=f"已{action}文件: {target}", metadata={"path": str(target)})
+
+    def replace_in_file(
+        self,
+        path: str,
+        search_text: str,
+        replace_text: str,
+        replace_all: bool = False,
+    ) -> ToolExecutionResult:
+        """精确替换文件中的文本片段。"""
+
+        allowed, reason = self._check_approval("replace_in_file", path)
+        if not allowed:
+            return ToolExecutionResult(name="replace_in_file", ok=False, output=reason)
+
+        target = Path(self._resolve_path(path))
+        if not target.exists() or not target.is_file():
+            return ToolExecutionResult(name="replace_in_file", ok=False, output=f"文件不存在: {target}")
+        original = target.read_text(encoding="utf-8", errors="replace")
+        count = original.count(search_text)
+        if count == 0:
+            return ToolExecutionResult(name="replace_in_file", ok=False, output="未找到要替换的文本")
+        if count > 1 and not replace_all:
+            return ToolExecutionResult(name="replace_in_file", ok=False, output=f"匹配到 {count} 处文本，请开启 replace_all 或提供更精确的 search_text")
+
+        updated = original.replace(search_text, replace_text) if replace_all else original.replace(search_text, replace_text, 1)
+        target.write_text(updated, encoding="utf-8")
+        diff_preview = "\n".join(
+            unified_diff(
+                original.splitlines(),
+                updated.splitlines(),
+                fromfile=str(target),
+                tofile=str(target),
+                lineterm="",
+                n=2,
+            )
+        )
+        return ToolExecutionResult(
+            name="replace_in_file",
+            ok=True,
+            output=self._truncate(diff_preview or f"已更新文件: {target}"),
+            metadata={"path": str(target), "occurrences": count},
+        )
+
+    def insert_in_file(self, path: str, content: str, line_number: int = 1) -> ToolExecutionResult:
+        """按行号插入内容，适合小范围修改。"""
+
+        allowed, reason = self._check_approval("insert_in_file", path)
+        if not allowed:
+            return ToolExecutionResult(name="insert_in_file", ok=False, output=reason)
+
+        target = Path(self._resolve_path(path))
+        if not target.exists() or not target.is_file():
+            return ToolExecutionResult(name="insert_in_file", ok=False, output=f"文件不存在: {target}")
+
+        original = target.read_text(encoding="utf-8", errors="replace")
+        lines = original.splitlines(keepends=True)
+        insertion_index = max(0, min(len(lines), int(line_number) - 1))
+        insert_text = content
+        if lines and insertion_index < len(lines) and insert_text and not insert_text.endswith(("\n", "\r")):
+            insert_text += "\n"
+        if not lines and insert_text and not insert_text.endswith(("\n", "\r")):
+            insert_text += "\n"
+        lines.insert(insertion_index, insert_text)
+        updated = "".join(lines)
+        target.write_text(updated, encoding="utf-8")
+        return ToolExecutionResult(
+            name="insert_in_file",
+            ok=True,
+            output=f"已在第 {insertion_index + 1} 行前插入内容: {target}",
+            metadata={"path": str(target), "line_number": insertion_index + 1},
+        )
 
     def list_knowledge_documents(self, keyword: str = "", limit: int = 500) -> ToolExecutionResult:
         """列出远程知识库中的候选文档。"""
@@ -927,6 +1212,91 @@ class ToolExecutor:
             "knowledge_base": self.knowledge_base.describe(),
         }
         return ToolExecutionResult(name="get_environment", ok=True, output=json.dumps(payload, ensure_ascii=False, indent=2))
+
+    def get_workspace_overview(self, path: str = ".", max_depth: int = 2, max_entries: int = 80) -> ToolExecutionResult:
+        """汇总当前工作区结构、主要文件类型和 Git 状态。"""
+
+        root = Path(self._resolve_path(path))
+        if not root.exists():
+            return ToolExecutionResult(name="get_workspace_overview", ok=False, output=f"路径不存在: {root}")
+        payload = self._collect_workspace_overview(root, max_depth=max_depth, max_entries=max_entries)
+        return ToolExecutionResult(name="get_workspace_overview", ok=True, output=json.dumps(payload, ensure_ascii=False, indent=2))
+
+    def git_status(self, repo_path: str = ".", include_untracked: bool = True) -> ToolExecutionResult:
+        """读取仓库分支与工作树状态。"""
+
+        repo_root = self._find_git_root(repo_path)
+        if repo_root is None:
+            return ToolExecutionResult(name="git_status", ok=False, output="当前路径不在 git 仓库中，或系统未安装 git")
+
+        args = ["status", "--short", "--branch"]
+        if include_untracked:
+            args.append("--untracked-files=all")
+        result = self._run_git(repo_root, args)
+        if result.returncode != 0:
+            return ToolExecutionResult(name="git_status", ok=False, output=result.stderr.strip() or result.stdout.strip() or "git status 执行失败")
+
+        lines = [line for line in result.stdout.splitlines() if line.strip()]
+        branch = lines[0] if lines else ""
+        entries = []
+        for line in lines[1:]:
+            status = line[:2]
+            file_name = line[3:] if len(line) > 3 else ""
+            entries.append({"status": status, "path": file_name})
+        payload = {
+            "repo_root": str(repo_root),
+            "branch": branch,
+            "changes": entries,
+            "change_count": len(entries),
+        }
+        return ToolExecutionResult(name="git_status", ok=True, output=json.dumps(payload, ensure_ascii=False, indent=2))
+
+    def git_diff(
+        self,
+        repo_path: str = ".",
+        pathspec: str = "",
+        cached: bool = False,
+        max_chars: int = 12000,
+    ) -> ToolExecutionResult:
+        """读取 git diff 文本。"""
+
+        repo_root = self._find_git_root(repo_path)
+        if repo_root is None:
+            return ToolExecutionResult(name="git_diff", ok=False, output="当前路径不在 git 仓库中，或系统未安装 git")
+
+        args = ["diff", "--no-ext-diff", "--minimal"]
+        if cached:
+            args.append("--cached")
+        if pathspec:
+            args.extend(["--", pathspec])
+        result = self._run_git(repo_root, args)
+        if result.returncode != 0:
+            return ToolExecutionResult(name="git_diff", ok=False, output=result.stderr.strip() or result.stdout.strip() or "git diff 执行失败")
+
+        diff_text = result.stdout.strip()
+        if not diff_text:
+            diff_text = "当前没有差异。"
+        return ToolExecutionResult(name="git_diff", ok=True, output=self._truncate(diff_text, limit=max(1000, int(max_chars))))
+
+    def build_workspace_context(self, max_depth: int = 2, max_entries: int = 40) -> str:
+        """生成供模型注入的精简工作区上下文。"""
+
+        payload = self._collect_workspace_overview(Path(self.cwd), max_depth=max_depth, max_entries=max_entries)
+        lines = ["当前工作区摘要:", f"- 根路径: {payload['root']}"]
+        if payload.get("git"):
+            git_payload = payload["git"]
+            lines.append(f"- Git: {git_payload.get('branch', 'unknown')}")
+            if git_payload.get("changes"):
+                preview = ", ".join(item["path"] for item in git_payload["changes"][:8])
+                suffix = " ..." if len(git_payload["changes"]) > 8 else ""
+                lines.append(f"- 已变更文件: {preview}{suffix}")
+        if payload.get("languages"):
+            lines.append("- 主要文件类型: " + ", ".join(f"{item['extension']}({item['count']})" for item in payload["languages"][:6]))
+        if payload.get("sample_files"):
+            lines.append("- 代表文件:")
+            for item in payload["sample_files"][:12]:
+                lines.append(f"  - {item}")
+        return "\n".join(lines)
 
     def ssh_execute_command(
         self,
@@ -1405,6 +1775,92 @@ class ToolExecutor:
         if candidate.is_absolute():
             return str(candidate.resolve())
         return str((Path(self.cwd) / candidate).resolve())
+
+    def _collect_workspace_overview(self, root: Path, max_depth: int, max_entries: int) -> Dict[str, object]:
+        """收集工作区摘要，供工具和系统提示词复用。"""
+
+        root = root.resolve()
+        sample_files: List[str] = []
+        directories: List[str] = []
+        extensions: Dict[str, int] = {}
+        limit = max(10, min(int(max_entries), 500))
+        for path in root.rglob("*"):
+            if len(sample_files) >= limit and len(directories) >= limit:
+                break
+            if self._is_hidden_path(path, root):
+                continue
+            try:
+                relative = str(path.relative_to(root))
+            except ValueError:
+                relative = path.name
+            depth = len(Path(relative).parts)
+            if depth > max(1, int(max_depth)) + 1:
+                continue
+            if path.is_dir():
+                if len(directories) < limit:
+                    directories.append(relative)
+                continue
+            if len(sample_files) < limit:
+                sample_files.append(relative)
+            extension = path.suffix.lower() or "<no_ext>"
+            extensions[extension] = extensions.get(extension, 0) + 1
+
+        languages = [
+            {"extension": extension, "count": count}
+            for extension, count in sorted(extensions.items(), key=lambda item: (-item[1], item[0]))
+        ]
+        payload: Dict[str, object] = {
+            "root": str(root),
+            "directories": directories[:limit],
+            "sample_files": sample_files[:limit],
+            "languages": languages[:10],
+        }
+        repo_root = self._find_git_root(str(root))
+        if repo_root is not None:
+            status_result = self.git_status(str(repo_root))
+            if status_result.ok:
+                try:
+                    payload["git"] = json.loads(status_result.output)
+                except json.JSONDecodeError:
+                    payload["git"] = {"raw": status_result.output}
+        return payload
+
+    @staticmethod
+    def _is_hidden_path(path: Path, root: Path) -> bool:
+        """判断路径是否位于隐藏目录或本身为隐藏文件。"""
+
+        try:
+            parts = path.relative_to(root).parts
+        except ValueError:
+            parts = path.parts
+        return any(part.startswith(".") for part in parts if part not in {".", ".."})
+
+    def _find_git_root(self, repo_path: str) -> Optional[Path]:
+        """查找给定路径所在的 git 仓库根目录。"""
+
+        if shutil.which("git") is None:
+            return None
+        target = Path(self._resolve_path(repo_path))
+        working_dir = target if target.is_dir() else target.parent
+        result = self._run_git(working_dir, ["rev-parse", "--show-toplevel"])
+        if result.returncode != 0:
+            return None
+        root = result.stdout.strip()
+        return Path(root).resolve() if root else None
+
+    @staticmethod
+    def _run_git(repo_root: Path, args: List[str]) -> subprocess.CompletedProcess[str]:
+        """在指定仓库执行 git 命令。"""
+
+        return subprocess.run(
+            ["git", "-C", str(repo_root), *args],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=60,
+            check=False,
+        )
 
     def _normalize_tool_arguments(self, tool_name: str, arguments: object) -> Dict[str, object]:
         """标准化模型生成的工具参数，兼容 raw 包装和多余字段。"""

@@ -56,6 +56,9 @@ class LuminChatAgent:
         self.memory_store = MemoryStore(str(memory_dir))
         self.memory_recall_limit = int(app_config.get("memory_recall_limit", 5))
         self.memory_max_chars = int(app_config.get("memory_max_chars", 1600))
+        self.workspace_context_enabled = bool(app_config.get("workspace_context_enabled", True))
+        self.workspace_context_max_depth = int(app_config.get("workspace_context_max_depth", 2))
+        self.workspace_context_max_entries = int(app_config.get("workspace_context_max_entries", 40))
         self.host_context = self._collect_host_context()
         self.system_prompt = build_system_prompt(config, self.model_level, self.max_model_level)
 
@@ -201,6 +204,25 @@ class LuminChatAgent:
             max_chars=self.memory_max_chars,
         )
         return text or "当前会话还没有沉淀长期记忆。"
+
+    def workspace_overview(self) -> str:
+        """返回当前工作区摘要。"""
+
+        return self.executor.get_workspace_overview(
+            path=self.executor.cwd,
+            max_depth=self.workspace_context_max_depth,
+            max_entries=self.workspace_context_max_entries,
+        ).output
+
+    def git_status(self) -> str:
+        """返回当前仓库状态。"""
+
+        return self.executor.git_status(repo_path=self.executor.cwd).output
+
+    def git_diff(self, pathspec: str = "") -> str:
+        """返回当前仓库 diff。"""
+
+        return self.executor.git_diff(repo_path=self.executor.cwd, pathspec=pathspec).output
 
     def run(self, user_input: str) -> str:
         """执行一次用户请求，必要时走多轮工具调用。"""
@@ -483,6 +505,13 @@ class LuminChatAgent:
 
         parts = [self.host_context.strip()] if self.host_context else []
         parts.append(f"当前工作目录: {self.executor.cwd}")
+        if self.workspace_context_enabled:
+            workspace_context = self.executor.build_workspace_context(
+                max_depth=self.workspace_context_max_depth,
+                max_entries=self.workspace_context_max_entries,
+            )
+            if workspace_context:
+                parts.append(workspace_context)
         return "\n".join(part for part in parts if part).strip()
 
     def _collect_host_context(self) -> str:

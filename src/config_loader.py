@@ -25,6 +25,9 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "report_dir": "~/lumin-report",
         "memory_recall_limit": 5,
         "memory_max_chars": 1600,
+        "workspace_context_enabled": True,
+        "workspace_context_max_depth": 2,
+        "workspace_context_max_entries": 40,
     },
     "command_policy": {
         "mode": "blacklist",

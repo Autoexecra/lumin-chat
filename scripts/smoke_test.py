@@ -72,6 +72,24 @@ def main() -> int:
         require(written.exists(), "raw parser did not create file")
         written.unlink(missing_ok=True)
 
+    with tempfile.TemporaryDirectory(prefix="lumin-chat-edit-") as edit_dir:
+        edit_file = Path(edit_dir) / "sample.py"
+        edit_file.write_text("alpha\nbeta\ngamma\n", encoding="utf-8")
+
+        replace_result = executor.replace_in_file(str(edit_file), "beta", "beta-updated")
+        require(replace_result.ok, f"replace_in_file failed: {replace_result.output}")
+        require("beta-updated" in edit_file.read_text(encoding="utf-8"), "replace_in_file did not update target text")
+
+        insert_result = executor.insert_in_file(str(edit_file), "inserted-line", line_number=2)
+        require(insert_result.ok, f"insert_in_file failed: {insert_result.output}")
+        inserted_lines = edit_file.read_text(encoding="utf-8").splitlines()
+        require(inserted_lines[1] == "inserted-line", f"insert_in_file inserted at wrong position: {inserted_lines}")
+
+        find_result = executor.find_files(pattern="**/*.py", path=edit_dir)
+        require(find_result.ok, f"find_files failed: {find_result.output}")
+        find_payload = json.loads(find_result.output)
+        require(any(item["path"].endswith("sample.py") for item in find_payload), f"find_files missing sample.py: {find_payload}")
+
     malformed_raw = executor.execute(
         ToolCall(
             id="malformed-write",
@@ -129,6 +147,16 @@ def main() -> int:
         any("当前主机基础信息" in str(message.get("content", "")) for message in prompt_messages if message.get("role") == "system"),
         f"host context missing from prompt messages: {prompt_messages}",
     )
+    require(
+        any("当前工作区摘要" in str(message.get("content", "")) for message in prompt_messages if message.get("role") == "system"),
+        f"workspace context missing from prompt messages: {prompt_messages}",
+    )
+
+    workspace_overview = agent.workspace_overview()
+    require("sample_files" in workspace_overview or "root" in workspace_overview, f"workspace overview mismatch: {workspace_overview}")
+
+    git_status_text = agent.git_status()
+    require("repo_root" in git_status_text or "当前路径不在 git 仓库中" in git_status_text, f"git status output mismatch: {git_status_text}")
 
     original_session_id = agent.session.session_id
     new_session_id = agent.create_new_session()

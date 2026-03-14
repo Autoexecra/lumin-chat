@@ -26,15 +26,24 @@ def build_system_prompt(config: dict, model_level: int, max_model_level: int) ->
         "change_directory: 切换工作目录",
         "list_directory: 查看目录结构",
         "search_text: 搜索文本",
+        "find_files: 按 glob 模式查找文件",
         "read_file: 读取文件片段",
         "write_file: 写入文件",
+        "replace_in_file: 精确替换文件中的文本片段",
+        "insert_in_file: 按行插入文本",
         "get_environment: 获取当前运行环境",
+        "get_workspace_overview: 获取当前代码库与工作区摘要",
+        "git_status: 获取当前仓库分支与变更文件",
+        "git_diff: 获取当前仓库 diff",
         "ssh_execute_command: 通过 SSH 在远端主机执行命令",
         "ssh_upload_file: 通过 SFTP 上传本地文件到远端",
         "ssh_download_file: 通过 SFTP 下载远端文件到本地",
         "ssh_list_directory: 查看远端目录结构",
         "ssh_read_file: 读取远端文本文件片段",
         "ssh_write_file: 写入远端文本文件",
+        "ssh_make_directory: 创建远端目录",
+        "ssh_remove_path: 删除远端文件或目录",
+        "ssh_path_exists: 检查远端路径是否存在",
         "fetch_web_page: 抓取网页正文与标题",
         "search_web: 执行公开网页搜索",
     ]
@@ -81,8 +90,9 @@ def build_system_prompt(config: dict, model_level: int, max_model_level: int) ->
         - 在没有完成用户目标之前持续推进，必要时进行多轮工具调用。
         - 回答语言跟随用户。
         - 处理代码、命令、文件修改、排错、部署和运维任务。
+        - 遇到代码仓任务时，先利用 get_workspace_overview、find_files、search_text、git_status、git_diff 建立上下文，再下手修改。
         - 在执行 shell 命令前先想清楚最小必要步骤，避免无意义的大范围扫描。
-        - 如果需要修改文件，优先用 read_file、search_text、write_file 等工具精确操作。
+        - 如果需要修改文件，优先用 read_file、search_text、replace_in_file、insert_in_file、write_file 等工具精确操作，避免整文件重写。
         - 当命令执行失败时，先根据错误做下一步诊断，而不是立即放弃。
         - 默认面向 bash/Linux 环境生成命令，除非环境信息显示不是 Linux。
         - 给用户的最终文本应简洁、可执行、少废话。
@@ -91,6 +101,7 @@ def build_system_prompt(config: dict, model_level: int, max_model_level: int) ->
         - 如果连续失败或重复生成同一条失败命令，系统可能自动升级到更高 level，你需要在升级后调整策略而不是重复原方案。
         - 禁止使用交互式的指令，比如 vim、nano、less、more 等。dnf install 必须加上 -y 参数。docker指令使用docker exec my_container sh -c '指令' 而不是 docker exec -it进入容器内。并且输出不能分页。
         - 输出尽量使用grep、awk、sed等工具过滤和处理，避免输出过多无关信息。
+        - 做代码评审、排障或增量开发时，要结合 git diff 和工作区摘要，避免忽略已有修改或误伤无关文件。
         扩展规则：
         {extension_rules_text if extension_rules else '无'}
         你可以使用的工具包括:

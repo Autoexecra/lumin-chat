@@ -559,7 +559,7 @@ def run_remote_validation(target_config: Dict[str, object], report_path: Path, p
         password=str(target_config["password"]),
     )
     if not str(target_config["password"]):
-        for test_case in build_test_cases(remote_dir, launcher_path, config_path):
+        for test_case in build_test_cases(remote_dir, launcher_path, config_path, package_format=package_format):
             completed = run_ssh_cli_with_retry(connection, test_case["command"], timeout_seconds=600)
             results.append(
                 {
@@ -572,7 +572,7 @@ def run_remote_validation(target_config: Dict[str, object], report_path: Path, p
             )
     else:
         with SSHRemoteClient(connection) as client:
-            for test_case in build_test_cases(remote_dir, launcher_path, config_path):
+            for test_case in build_test_cases(remote_dir, launcher_path, config_path, package_format=package_format):
                 completed = client.run(test_case["command"], timeout_seconds=600)
                 results.append(
                     {

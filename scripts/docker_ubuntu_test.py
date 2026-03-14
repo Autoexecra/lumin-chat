@@ -64,14 +64,20 @@ def build_test_cases(
     remote_dir: str = "/var/lib/lumin-chat",
     launcher_command: str = "/usr/bin/lumin-chat --help",
     config_path: str = "/etc/lumin-chat/config.json",
+    package_format: str = "rpm",
 ) -> list[dict[str, str]]:
     """定义本次 Docker Ubuntu 回归测试的命令集合。"""
 
-    return [
-        {
-            "name": "检查 RPM 安装状态",
-            "command": "rpm -q lumin-chat",
-        },
+    tests = []
+    if package_format == "rpm":
+        tests.append(
+            {
+                "name": "检查 RPM 安装状态",
+                "command": "rpm -q lumin-chat",
+            }
+        )
+
+    tests.extend([
         {
             "name": "检查 Docker 版本",
             "command": "docker --version",
@@ -109,7 +115,8 @@ def build_test_cases(
             "name": "验证容器内目录遍历",
             "command": "docker run --rm ubuntu:latest sh -lc 'pwd && ls / | sed -n \"1,20p\"'",
         },
-    ]
+    ])
+    return tests
 
 
 def render_report(host: str, port: int, user: str, remote_dir: str, results: list[dict[str, object]]) -> str:
@@ -181,7 +188,7 @@ def main() -> int:
     args = parser.parse_args()
 
     results: list[dict[str, object]] = []
-    for test_case in build_test_cases(args.remote_dir, args.launcher, args.config_path):
+    for test_case in build_test_cases(args.remote_dir, args.launcher, args.config_path, package_format="rpm"):
         completed = remote_run(args.host, args.port, args.user, test_case["command"])
         results.append(
             {
