@@ -9,10 +9,12 @@ from __future__ import annotations
 import argparse
 import getpass
 import json
+import os
 import posixpath
 import re
 import shutil
 import subprocess
+import sys
 import tarfile
 import time
 from pathlib import Path
@@ -628,6 +630,14 @@ def main() -> int:
     args = parser.parse_args()
 
     config = load_config(args.config)
+    # Windows 本地通常无法执行 rpmbuild，因此在 Windows 上强制使用源码部署模式。
+    is_windows = os.name == "nt"
+    if is_windows and args.package_format == "rpm":
+        print(
+            "检测到 Windows 环境，跳过本地 RPM 打包，改为源码部署（--package-format source）", file=sys.stderr
+        )
+        args.package_format = "source"
+
     project_root = Path(__file__).resolve().parent
     stage_root = project_root / ".dist" / "deploy-package"
     archive_path = project_root / ".dist" / "artifacts" / "lumin-chat.tar.gz"

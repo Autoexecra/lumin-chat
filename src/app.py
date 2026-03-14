@@ -175,7 +175,23 @@ def _handle_slash_command(raw: str, agent: LuminChatAgent, ui: TerminalUI) -> bo
         return False
     if command == "/help":
         ui.show_info(
-            "/help /exit /reset /new-session /sessions [/n] /switch-session <id|path> /model <n> /approval <prompt|auto|read-only> /policy <blacklist|whitelist> /cd <path> /cwd /session /shell /memory [query] /restart-shell"
+            """
+/help               - 显示帮助信息
+/exit, /quit       - 退出交互模式
+/reset              - 重置当前会话（新会话）
+/new-session        - 创建并切换到新会话
+/sessions [n]       - 列出最近 n 个会话（默认 20）
+/switch-session id  - 切换到指定会话（ID 或路径）
+/model <n>          - 切换模型等级（1-5）
+/approval <mode>    - 切换审批策略（prompt/auto/read-only）
+/policy <mode>      - 切换命令策略（blacklist/whitelist）
+/cd <path>          - 切换工作目录
+/cwd                - 显示当前工作目录
+/session            - 显示当前会话路径
+/shell              - 显示 shell 状态
+/memory [query]     - 显示当前会话记忆摘要（可选 query）
+/restart-shell      - 重启 Shell 会话
+"""
         )
         return True
     if command == "/reset":
